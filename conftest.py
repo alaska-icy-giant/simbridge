@@ -63,6 +63,37 @@ def auth_header(client):
 
 
 @pytest.fixture()
+def mock_google_verify(monkeypatch):
+    """Fixture that patches verify_google_token to return a controlled payload."""
+    _payload = {
+        "sub": "google-uid-123",
+        "email": "googleuser@gmail.com",
+    }
+
+    async def _fake_verify(id_token: str) -> dict:
+        if id_token == "invalid":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail="Invalid Google token: bad")
+        return _payload
+
+    import auth
+    monkeypatch.setattr(auth, "verify_google_token", _fake_verify)
+    # Also patch the reference in main module
+    import main
+    monkeypatch.setattr(main, "verify_google_token", _fake_verify)
+    return _payload
+
+
+@pytest.fixture()
+def google_auth_header(client, mock_google_verify):
+    """Authenticate via Google and return the Authorization header."""
+    resp = client.post("/auth/google", json={"id_token": "valid-google-token"})
+    assert resp.status_code == 200
+    token = resp.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
 def host_device(client, auth_header, db):
     resp = client.post("/devices", json={"name": "MyHost", "type": "host"}, headers=auth_header)
     return resp.json()

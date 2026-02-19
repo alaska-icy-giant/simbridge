@@ -19,6 +19,7 @@ from auth import (
     decode_token,
     get_current_user_id,
     hash_password,
+    verify_google_token,
     verify_password,
 )
 from models import Device, MessageLog, Pairing, PairingCode, PendingCommand, User, init_db
@@ -88,6 +89,10 @@ class AuthRequest(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+
+
 class DeviceCreate(BaseModel):
     name: str
     type: str  # "host" or "client"
@@ -142,8 +147,44 @@ def _check_rate_limit(key: str):
 def login(req: AuthRequest, db: Session = Depends(get_db)):
     _check_rate_limit(req.username)
     user = db.query(User).filter(User.username == req.username).first()
-    if not user or not verify_password(req.password, user.password_hash):
+    if not user or not user.password_hash or not verify_password(req.password, user.password_hash):
         raise HTTPException(401, "Invalid credentials")
+    token = create_token(user.id)
+    return {"token": token, "user_id": user.id}
+
+
+@app.post("/auth/google")
+async def google_login(req: GoogleAuthRequest, db: Session = Depends(get_db)):
+    payload = await verify_google_token(req.id_token)
+
+    google_id = payload["sub"]
+    email = payload.get("email")
+
+    # 1. Find by google_id
+    user = db.query(User).filter(User.google_id == google_id).first()
+
+    if not user and email:
+        # 2. Link by email
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            user.google_id = google_id
+            db.commit()
+
+    if not user:
+        # 3. Auto-create
+        # Generate a unique username from email or google_id
+        base_username = email.split("@")[0] if email else f"google_{google_id[:8]}"
+        username = base_username
+        counter = 1
+        while db.query(User).filter(User.username == username).first():
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        user = User(username=username, email=email, google_id=google_id)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
     token = create_token(user.id)
     return {"token": token, "user_id": user.id}
 

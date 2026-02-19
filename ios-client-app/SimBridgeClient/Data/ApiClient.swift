@@ -143,6 +143,17 @@ final class ApiClient {
         return try await perform(request)
     }
 
+    func googleLogin(serverUrl: String, idToken: String) async throws -> LoginResponse {
+        let body = GoogleAuthRequest(idToken: idToken)
+        let request = try buildRequest(
+            path: "/auth/google",
+            method: "POST",
+            body: body,
+            serverUrl: serverUrl
+        )
+        return try await perform(request)
+    }
+
     // MARK: - Devices
 
     func registerDevice(name: String) async throws -> DeviceResponse {

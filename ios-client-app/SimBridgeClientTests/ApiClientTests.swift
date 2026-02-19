@@ -91,6 +91,17 @@ final class ApiClient: ApiClientProtocol {
         return try await perform(request)
     }
 
+    // MARK: - Google Auth
+
+    func googleLogin(serverUrl: String, idToken: String) async throws -> LoginResponse {
+        baseURL = serverUrl
+        let body = try JSONSerialization.data(withJSONObject: [
+            "id_token": idToken
+        ])
+        let request = makeRequest(method: "POST", path: "/auth/google", body: body, authenticated: false)
+        return try await perform(request)
+    }
+
     // MARK: - Devices
 
     func registerDevice(name: String) async throws -> DeviceResponse {
@@ -206,6 +217,32 @@ final class ApiClientTests: XCTestCase {
 
         let response = try await sut.login(serverUrl: "http://localhost:8100", username: "alice", password: "secret123")
 
+        XCTAssertEqual(response.token, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxfQ.test")
+        XCTAssertEqual(response.userId, 1)
+    }
+
+    // MARK: - Google Login
+
+    func test_google_login_sends_id_token() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let url = request.url!
+            XCTAssertEqual(url.path, "/auth/google")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: String]
+            XCTAssertEqual(body["id_token"], "google-id-token-123")
+
+            return (
+                SampleData.httpResponse(url: url, statusCode: 200),
+                SampleData.data(SampleData.loginResponseJSON)
+            )
+        }
+
+        let response = try await sut.googleLogin(
+            serverUrl: "http://localhost:8100", idToken: "google-id-token-123"
+        )
+
+        XCTAssertEqual(MockURLProtocol.capturedRequests.count, 1)
         XCTAssertEqual(response.token, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxfQ.test")
         XCTAssertEqual(response.userId, 1)
     }

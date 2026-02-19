@@ -8,6 +8,8 @@ okhttp = "4.12.0"
 gson = "2.11.0"
 webrtc = "1.2.2"
 activity-compose = "1.9.3"
+credentials = "1.3.0"
+googleid = "1.1.1"
 
 [libraries]
 # Compose
@@ -37,6 +39,11 @@ gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 
 # WebRTC
 webrtc = { group = "io.getstream", name = "stream-webrtc-android", version.ref = "webrtc" }
+
+# Google Sign-In
+credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
+credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
+googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

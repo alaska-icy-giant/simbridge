@@ -40,6 +40,15 @@ class ApiClient(private val prefs: Prefs) {
         return execute(request, AuthResponse::class.java)
     }
 
+    fun googleLogin(serverUrl: String, idToken: String): Result<AuthResponse> {
+        val body = gson.toJson(GoogleAuthRequest(idToken)).toRequestBody(jsonType)
+        val request = Request.Builder()
+            .url("${serverUrl.trimEnd('/')}/auth/google")
+            .post(body)
+            .build()
+        return execute(request, AuthResponse::class.java)
+    }
+
     // ── Devices ──
 
     fun registerDevice(name: String): Result<DeviceInfo> {

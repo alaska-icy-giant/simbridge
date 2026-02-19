@@ -231,6 +231,28 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(resp.pairedDeviceId, 10)
     }
 
+    // MARK: - GoogleAuthRequest Serialization
+
+    func testGoogleAuthRequestSerialization() throws {
+        let req = GoogleAuthRequest(idToken: "my-google-token")
+
+        let data = try encoder.encode(req)
+        let json = String(data: data, encoding: .utf8)!
+
+        XCTAssertTrue(json.contains("\"id_token\""),
+                       "Expected snake_case key 'id_token' in JSON: \(json)")
+        XCTAssertTrue(json.contains("my-google-token"))
+    }
+
+    func testGoogleAuthRequestRoundTrip() throws {
+        let original = GoogleAuthRequest(idToken: "token-abc-123")
+
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(GoogleAuthRequest.self, from: data)
+
+        XCTAssertEqual(decoded.idToken, "token-abc-123")
+    }
+
     // MARK: - JSON from Server (External Format)
 
     func testDecodingServerFormatWsMessage() throws {

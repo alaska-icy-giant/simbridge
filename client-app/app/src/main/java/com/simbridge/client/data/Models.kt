@@ -41,6 +41,10 @@ data class RegisterRequest(val username: String, val password: String)
 
 data class AuthResponse(val token: String, @SerializedName("user_id") val userId: Int? = null)
 
+data class GoogleAuthRequest(
+    @SerializedName("id_token") val idToken: String,
+)
+
 data class DeviceRegisterRequest(val name: String, val type: String = "client")
 
 data class DeviceInfo(

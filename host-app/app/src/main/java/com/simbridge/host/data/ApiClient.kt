@@ -45,6 +45,19 @@ class ApiClient(private val prefs: Prefs) {
     }
 
     /**
+     * POST /auth/google — authenticate with Google ID token.
+     */
+    fun googleLogin(serverUrl: String, idToken: String): Result<LoginResponse> {
+        val body = gson.toJson(GoogleAuthRequest(idToken))
+            .toRequestBody(jsonType)
+        val request = Request.Builder()
+            .url("${serverUrl.trimEnd('/')}/auth/google")
+            .post(body)
+            .build()
+        return execute(request, LoginResponse::class.java)
+    }
+
+    /**
      * POST /devices — register this device as a host.
      */
     fun registerDevice(name: String): Result<DeviceResponse> {

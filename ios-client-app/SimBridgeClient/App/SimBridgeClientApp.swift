@@ -4,6 +4,7 @@
 
 import SwiftUI
 import UserNotifications
+import GoogleSignIn
 
 @main
 struct SimBridgeClientApp: App {
@@ -18,6 +19,9 @@ struct SimBridgeClientApp: App {
             AppNavigation()
                 .environmentObject(appState)
                 .preferredColorScheme(nil) // respect system setting
+                .onOpenURL { url in
+                    GIDSignIn.sharedInstance.handle(url)
+                }
         }
     }
 

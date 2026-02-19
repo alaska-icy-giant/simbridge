@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from models import PairingCode
+from models import PairingCode, User
 
 
 # ---------------------------------------------------------------------------
@@ -236,3 +236,75 @@ def test_history_filtered_by_device_id(client, auth_header, paired_devices, db):
     # Both logs involve the host, so both should appear
     assert data["total"] == 2
     assert len(data["items"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Google Auth
+# ---------------------------------------------------------------------------
+
+def test_google_login_creates_new_user(client, mock_google_verify):
+    resp = client.post("/auth/google", json={"id_token": "valid-token"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "token" in data
+    assert "user_id" in data
+
+
+def test_google_login_returns_same_user_on_repeat(client, mock_google_verify):
+    resp1 = client.post("/auth/google", json={"id_token": "valid-token"})
+    resp2 = client.post("/auth/google", json={"id_token": "valid-token"})
+    assert resp1.json()["user_id"] == resp2.json()["user_id"]
+
+
+def test_google_login_links_by_email(client, mock_google_verify, db):
+    # Create a user with matching email but no google_id
+    from auth import hash_password
+    user = User(username="existinguser", password_hash=hash_password("pw"), email="googleuser@gmail.com")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    resp = client.post("/auth/google", json={"id_token": "valid-token"})
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == user.id
+
+    # Verify google_id was linked
+    db.refresh(user)
+    assert user.google_id == "google-uid-123"
+
+
+def test_google_login_invalid_token(client, mock_google_verify):
+    resp = client.post("/auth/google", json={"id_token": "invalid"})
+    assert resp.status_code == 401
+
+
+def test_google_login_dedup_username(client, mock_google_verify, db):
+    # Create existing user with the username that google would generate
+    from auth import hash_password
+    user = User(username="googleuser", password_hash=hash_password("pw"))
+    db.add(user)
+    db.commit()
+
+    resp = client.post("/auth/google", json={"id_token": "valid-token"})
+    assert resp.status_code == 200
+    # The new user should have a different username (e.g., googleuser1)
+    new_user_id = resp.json()["user_id"]
+    new_user = db.query(User).filter(User.id == new_user_id).first()
+    assert new_user.username != "googleuser"
+    assert new_user.username.startswith("googleuser")
+
+
+def test_password_login_blocked_for_google_only_user(client, mock_google_verify):
+    # First create a Google-only user
+    resp = client.post("/auth/google", json={"id_token": "valid-token"})
+    assert resp.status_code == 200
+
+    # Try to login with password — should fail since password_hash is None
+    resp = client.post("/auth/login", json={"username": "googleuser", "password": "anything"})
+    assert resp.status_code == 401
+
+
+def test_google_auth_header_fixture(client, google_auth_header):
+    """Verify the google_auth_header fixture works for authenticated endpoints."""
+    resp = client.get("/devices", headers=google_auth_header)
+    assert resp.status_code == 200

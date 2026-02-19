@@ -12,6 +12,8 @@ if not JWT_SECRET:
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
 security = HTTPBearer()
 
 
@@ -46,3 +48,25 @@ def get_current_user_id(
 ) -> int:
     payload = decode_token(credentials.credentials)
     return payload["user_id"]
+
+
+async def verify_google_token(id_token: str) -> dict:
+    """Verify a Google ID token and return the payload (sub, email)."""
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Google authentication is not configured",
+        )
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+
+        payload = google_id_token.verify_oauth2_token(
+            id_token, google_requests.Request(), GOOGLE_CLIENT_ID
+        )
+        return payload
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Google token: {e}",
+        )

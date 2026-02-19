@@ -56,6 +56,14 @@ struct LoginResponse: Codable {
     let token: String
 }
 
+struct GoogleAuthRequest: Codable {
+    let idToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case idToken = "id_token"
+    }
+}
+
 struct DeviceRegisterRequest: Codable {
     let name: String
     let type: String

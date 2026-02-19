@@ -41,6 +41,10 @@ data class LoginResponse(
     val token: String,
 )
 
+data class GoogleAuthRequest(
+    @SerializedName("id_token") val idToken: String,
+)
+
 data class DeviceRegisterRequest(
     val name: String,
     val type: String = "host",

@@ -156,6 +156,19 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(disconnected.rawValue, "disconnected")
     }
 
+    // MARK: - GoogleAuthRequest encodes
+
+    func test_google_auth_request_encodes() throws {
+        let request = GoogleAuthRequest(idToken: "my-google-id-token")
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(request)
+        let dict = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+
+        XCTAssertEqual(dict["id_token"] as? String, "my-google-id-token")
+        XCTAssertNil(dict["idToken"], "Should use snake_case key 'id_token', not camelCase")
+    }
+
     // MARK: - RelayResponse decodes
 
     func test_relay_response_decodes() throws {

@@ -66,6 +66,14 @@ struct LoginResponse: Codable {
     }
 }
 
+struct GoogleAuthRequest: Codable {
+    let idToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case idToken = "id_token"
+    }
+}
+
 struct RegisterResponse: Codable {
     let id: Int
     let username: String

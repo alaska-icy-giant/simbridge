@@ -9,6 +9,7 @@ protocol ApiClientProtocol {
 
     func register(serverUrl: String, username: String, password: String) async throws -> RegisterResponse
     func login(serverUrl: String, username: String, password: String) async throws -> LoginResponse
+    func googleLogin(serverUrl: String, idToken: String) async throws -> LoginResponse
     func registerDevice(name: String) async throws -> DeviceResponse
     func listDevices() async throws -> [DeviceResponse]
     func confirmPair(code: String, clientDeviceId: Int) async throws -> PairResponse
@@ -46,6 +47,9 @@ final class MockApiClient: ApiClientProtocol {
     var loginResult: Result<LoginResponse, Error> = .success(
         LoginResponse(token: "test-jwt-token", userId: 1)
     )
+    var googleLoginResult: Result<LoginResponse, Error> = .success(
+        LoginResponse(token: "google-jwt-token", userId: 2)
+    )
     var registerDeviceResult: Result<DeviceResponse, Error> = .success(
         DeviceResponse(id: 10, name: "iPhone Client", type: "client", isOnline: false)
     )
@@ -74,6 +78,11 @@ final class MockApiClient: ApiClientProtocol {
     func login(serverUrl: String, username: String, password: String) async throws -> LoginResponse {
         calls.append(Call(method: "login", args: [serverUrl, username, password]))
         return try loginResult.get()
+    }
+
+    func googleLogin(serverUrl: String, idToken: String) async throws -> LoginResponse {
+        calls.append(Call(method: "googleLogin", args: [serverUrl, idToken]))
+        return try googleLoginResult.get()
     }
 
     func registerDevice(name: String) async throws -> DeviceResponse {

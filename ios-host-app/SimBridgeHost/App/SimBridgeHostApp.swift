@@ -6,6 +6,7 @@
 // Initializes AppState, sets up theme, and configures the navigation root.
 
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct SimBridgeHostApp: App {
@@ -21,6 +22,9 @@ struct SimBridgeHostApp: App {
             .environmentObject(appState)
             .onAppear {
                 appState.autoStartIfNeeded()
+            }
+            .onOpenURL { url in
+                GIDSignIn.sharedInstance.handle(url)
             }
         }
     }

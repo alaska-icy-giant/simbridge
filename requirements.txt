@@ -4,6 +4,7 @@ sqlalchemy
 pyjwt
 python-dotenv
 bcrypt
+google-auth
 pytest
 pytest-asyncio
 httpx

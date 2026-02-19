@@ -28,6 +28,13 @@ final class ApiClient: Sendable {
         return try await post(url: url, body: body, token: nil)
     }
 
+    /// POST /auth/google -- authenticate with Google ID token.
+    func googleLogin(serverUrl: String, idToken: String) async throws -> LoginResponse {
+        let url = URL(string: "\(serverUrl.trimmingSuffix("/"))/auth/google")!
+        let body = GoogleAuthRequest(idToken: idToken)
+        return try await post(url: url, body: body, token: nil)
+    }
+
     /// POST /devices -- register this device as a host.
     func registerDevice(name: String) async throws -> DeviceResponse {
         let baseUrl = prefs.serverUrl

@@ -53,6 +53,7 @@ let package = Package(
         // WebRTC framework for peer-to-peer audio
         // Uncomment when building with SPM:
         // .package(url: "https://github.com/nicolo-ribaudo/webrtc-swiftpm", from: "114.0.0"),
+        .package(url: "https://github.com/google/GoogleSignIn-iOS", from: "8.0.0"),
     ],
     targets: [
         .target(
@@ -60,6 +61,7 @@ let package = Package(
             dependencies: [
                 // Uncomment when building with SPM:
                 // .product(name: "WebRTC", package: "webrtc-swiftpm"),
+                .product(name: "GoogleSignIn", package: "GoogleSignIn-iOS"),
             ],
             path: "SimBridgeHost"
         ),

@@ -88,5 +88,17 @@
         <key>UIApplicationSupportsMultipleScenes</key>
         <false/>
     </dict>
+    <!-- Google Sign-In -->
+    <key>GIDClientID</key>
+    <string>YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.googleusercontent.apps.YOUR_GOOGLE_CLIENT_ID</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
