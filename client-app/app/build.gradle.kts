@@ -39,6 +39,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    @Suppress("UnstableApiUsage")
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
+    }
 }
 
 dependencies {
@@ -65,4 +73,19 @@ dependencies {
 
     // WebRTC
     implementation(libs.webrtc)
+
+    // Unit testing — JUnit 5 + MockK
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testImplementation("io.mockk:mockk:1.13.9")
+    testImplementation(libs.gson)
+
+    // Compose UI tests (instrumented)
+    val composeBomTest = platform(libs.compose.bom)
+    androidTestImplementation(composeBomTest)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+    androidTestImplementation(libs.navigation.testing)
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
