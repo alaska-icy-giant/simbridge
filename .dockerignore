@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.db
+.env
+.venv/
+.git/
+.pytest_cache/
+.claude/
+host-app/
+test_*.py
+conftest.py
+*.md

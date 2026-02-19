@@ -5,4 +5,6 @@ pyjwt
 python-dotenv
 bcrypt
 pytest
+pytest-asyncio
 httpx
+websockets

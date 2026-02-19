@@ -34,16 +34,17 @@ def client(db):
         yield db
 
     app.dependency_overrides[get_db] = _override_get_db
-    # Patch SessionLocal so WebSocket handlers (which call SessionLocal() directly) use the test DB
     import main
-    original = main.SessionLocal
-    main.SessionLocal = sessionmaker(bind=db.get_bind())
 
     with TestClient(app) as c:
+        # Patch SessionLocal AFTER TestClient enters context, because the lifespan
+        # event overwrites main.SessionLocal with a file-backed engine.
+        original = main.SessionLocal
+        main.SessionLocal = sessionmaker(bind=db.get_bind())
         yield c
+        main.SessionLocal = original
 
     app.dependency_overrides.clear()
-    main.SessionLocal = original
     connections.clear()
 
 
