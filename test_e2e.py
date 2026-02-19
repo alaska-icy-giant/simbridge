@@ -1,8 +1,9 @@
 """
 End-to-End tests: Host App ↔ SimBridge ↔ Client App
 
-Simulates a two-phone scenario with independent host and client users.
-Requires SimBridge container running on localhost:8100.
+Simulates a two-phone scenario under a single user account (cross-user
+pairing is blocked by the server).  Requires SimBridge container running
+on localhost:8100.
 
 Run:
     pytest test_e2e.py -v
@@ -10,24 +11,25 @@ Run:
 
 import asyncio
 import json
+import os
 import uuid
 
 import httpx
 import pytest
 import websockets
 
-BASE_URL = "http://localhost:8100"
-WS_BASE = "ws://localhost:8100"
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:8100")
+WS_BASE = os.environ.get("WS_BASE", "ws://localhost:8100")
 
 
 # ---------------------------------------------------------------------------
-# Shared state for the two independent users
+# Shared state — single user account owning both host and client devices
 # ---------------------------------------------------------------------------
 
 class _UserState:
     def __init__(self, role: str):
         self.role = role
-        self.username = f"e2e_{role}_{uuid.uuid4().hex[:8]}"
+        self.username: str = ""
         self.token: str = ""
         self.user_id: int = 0
         self.device_id: int = 0
@@ -35,8 +37,12 @@ class _UserState:
 
 class _E2EState:
     def __init__(self):
+        self.username = f"e2e_{uuid.uuid4().hex[:8]}"
         self.host = _UserState("host")
         self.client = _UserState("client")
+        # Both share the same username / credentials
+        self.host.username = self.username
+        self.client.username = self.username
         self.pairing_id: int = 0
 
 
@@ -60,25 +66,19 @@ def _h(state: _UserState) -> dict:
 # ---------------------------------------------------------------------------
 
 class TestSetup:
-    def test_register_host_user(self, http, e2e):
-        r = http.post("/auth/register", json={"username": e2e.host.username, "password": "hostpw"})
+    def test_register_user(self, http, e2e):
+        r = http.post("/auth/register", json={"username": e2e.username, "password": "e2epw"})
         assert r.status_code == 200
-        e2e.host.user_id = r.json()["id"]
+        uid = r.json()["id"]
+        e2e.host.user_id = uid
+        e2e.client.user_id = uid
 
-    def test_register_client_user(self, http, e2e):
-        r = http.post("/auth/register", json={"username": e2e.client.username, "password": "clientpw"})
+    def test_login_user(self, http, e2e):
+        r = http.post("/auth/login", json={"username": e2e.username, "password": "e2epw"})
         assert r.status_code == 200
-        e2e.client.user_id = r.json()["id"]
-
-    def test_login_host(self, http, e2e):
-        r = http.post("/auth/login", json={"username": e2e.host.username, "password": "hostpw"})
-        assert r.status_code == 200
-        e2e.host.token = r.json()["token"]
-
-    def test_login_client(self, http, e2e):
-        r = http.post("/auth/login", json={"username": e2e.client.username, "password": "clientpw"})
-        assert r.status_code == 200
-        e2e.client.token = r.json()["token"]
+        token = r.json()["token"]
+        e2e.host.token = token
+        e2e.client.token = token
 
     def test_create_host_device(self, http, e2e):
         r = http.post("/devices", json={"name": "E2E-HostPhone", "type": "host"}, headers=_h(e2e.host))
@@ -99,13 +99,30 @@ class TestSetup:
         code = r.json()["code"]
         assert len(code) == 6
 
-        # Client confirms pairing
+        # Same user confirms pairing with client device
         r = http.post("/pair/confirm", json={
             "code": code, "client_device_id": e2e.client.device_id,
         }, headers=_h(e2e.client))
         assert r.status_code == 200
         assert r.json()["status"] == "paired"
         e2e.pairing_id = r.json()["pairing_id"]
+
+
+async def _drain_until(ws, predicate, timeout=5):
+    """Receive WS messages until one matches, skipping queued command deliveries."""
+    import asyncio as _aio
+    deadline = _aio.get_event_loop().time() + timeout
+    while True:
+        remaining = deadline - _aio.get_event_loop().time()
+        if remaining <= 0:
+            raise TimeoutError("No matching message received")
+        msg = json.loads(await _aio.wait_for(ws.recv(), timeout=remaining))
+        if predicate(msg):
+            return msg
+
+
+async def _wait_connected(ws):
+    return await _drain_until(ws, lambda m: m.get("type") == "connected")
 
 
 # ---------------------------------------------------------------------------
@@ -119,8 +136,7 @@ class TestSmsRelay:
         Host should receive the SEND_SMS command."""
         host_url = f"{WS_BASE}/ws/host/{e2e.host.device_id}?token={e2e.host.token}"
         async with websockets.connect(host_url) as ws_host:
-            msg = json.loads(await ws_host.recv())
-            assert msg["type"] == "connected"
+            await _wait_connected(ws_host)
 
             # Client sends SMS via REST
             async with httpx.AsyncClient(base_url=BASE_URL, timeout=10) as ac:
@@ -131,21 +147,21 @@ class TestSmsRelay:
             assert r.status_code == 200
             assert r.json()["status"] == "sent"
 
-            # Host receives command
-            cmd = json.loads(await ws_host.recv())
-            assert cmd["cmd"] == "SEND_SMS"
+            # Host receives command (skip any remaining queued deliveries)
+            cmd = await _drain_until(ws_host, lambda m: m.get("cmd") == "SEND_SMS")
             assert cmd["to"] == "+15550001111"
             assert cmd["body"] == "E2E test message"
             assert cmd["sim"] == 1
 
-    async def test_sms_fails_host_offline(self, e2e):
-        """POST /sms returns 503 when host has no WebSocket connection."""
+    async def test_sms_queued_host_offline(self, e2e):
+        """POST /sms returns 200 with queued status when host is offline."""
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=10) as ac:
             r = await ac.post("/sms", json={
                 "to_device_id": e2e.host.device_id,
                 "sim": 1, "to": "+15550002222", "body": "offline test",
             }, headers=_h(e2e.client))
-        assert r.status_code == 503
+        assert r.status_code == 200
+        assert r.json()["status"] == "queued"
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +173,7 @@ class TestCallRelay:
     async def test_call_delivered_to_host(self, e2e):
         host_url = f"{WS_BASE}/ws/host/{e2e.host.device_id}?token={e2e.host.token}"
         async with websockets.connect(host_url) as ws_host:
-            await ws_host.recv()  # connected
+            await _wait_connected(ws_host)
 
             async with httpx.AsyncClient(base_url=BASE_URL, timeout=10) as ac:
                 r = await ac.post("/call", json={
@@ -167,8 +183,7 @@ class TestCallRelay:
             assert r.status_code == 200
             assert r.json()["status"] == "sent"
 
-            cmd = json.loads(await ws_host.recv())
-            assert cmd["cmd"] == "MAKE_CALL"
+            cmd = await _drain_until(ws_host, lambda m: m.get("cmd") == "MAKE_CALL")
             assert cmd["to"] == "+15550003333"
             assert cmd["sim"] == 2
 
@@ -186,8 +201,8 @@ class TestWebSocketRelay:
 
         async with websockets.connect(host_url) as ws_host, \
                    websockets.connect(client_url) as ws_client:
-            await ws_host.recv()    # connected
-            await ws_client.recv()  # connected
+            await _wait_connected(ws_host)
+            await _wait_connected(ws_client)
 
             await ws_client.send(json.dumps({
                 "type": "command", "cmd": "GET_SIMS",
@@ -205,15 +220,15 @@ class TestWebSocketRelay:
 
         async with websockets.connect(host_url) as ws_host, \
                    websockets.connect(client_url) as ws_client:
-            await ws_host.recv()
-            await ws_client.recv()
+            await _wait_connected(ws_host)
+            await _wait_connected(ws_client)
 
             await ws_host.send(json.dumps({
                 "type": "event", "event": "INCOMING_SMS",
                 "from": "+15559999999", "body": "Hello from host",
                 "to_device_id": e2e.client.device_id,
             }))
-            msg = json.loads(await ws_client.recv())
+            msg = await _drain_until(ws_client, lambda m: m.get("type") == "event")
             assert msg["type"] == "event"
             assert msg["event"] == "INCOMING_SMS"
             assert msg["from_device_id"] == e2e.host.device_id
@@ -222,7 +237,7 @@ class TestWebSocketRelay:
         """Client sends WS message when host is not connected."""
         client_url = f"{WS_BASE}/ws/client/{e2e.client.device_id}?token={e2e.client.token}"
         async with websockets.connect(client_url) as ws_client:
-            await ws_client.recv()  # connected
+            await _wait_connected(ws_client)
             await ws_client.send(json.dumps({
                 "type": "command", "cmd": "GET_SIMS",
             }))
@@ -239,17 +254,17 @@ class TestPingPong:
     async def test_host_ping(self, e2e):
         url = f"{WS_BASE}/ws/host/{e2e.host.device_id}?token={e2e.host.token}"
         async with websockets.connect(url) as ws:
-            await ws.recv()
+            await _wait_connected(ws)
             await ws.send(json.dumps({"type": "ping"}))
-            msg = json.loads(await ws.recv())
+            msg = await _drain_until(ws, lambda m: m.get("type") == "pong")
             assert msg["type"] == "pong"
 
     async def test_client_ping(self, e2e):
         url = f"{WS_BASE}/ws/client/{e2e.client.device_id}?token={e2e.client.token}"
         async with websockets.connect(url) as ws:
-            await ws.recv()
+            await _wait_connected(ws)
             await ws.send(json.dumps({"type": "ping"}))
-            msg = json.loads(await ws.recv())
+            msg = await _drain_until(ws, lambda m: m.get("type") == "pong")
             assert msg["type"] == "pong"
 
 
@@ -261,7 +276,7 @@ class TestHistory:
     def test_host_user_sees_history(self, http, e2e):
         r = http.get("/history", headers=_h(e2e.host))
         assert r.status_code == 200
-        logs = r.json()
+        logs = r.json()["items"]
         assert len(logs) > 0
         # All entries should involve the host device
         for log in logs:
@@ -270,7 +285,7 @@ class TestHistory:
     def test_client_user_sees_history(self, http, e2e):
         r = http.get("/history", headers=_h(e2e.client))
         assert r.status_code == 200
-        logs = r.json()
+        logs = r.json()["items"]
         assert len(logs) > 0
         for log in logs:
             assert e2e.client.device_id in (log["from_device_id"], log["to_device_id"])
@@ -278,13 +293,13 @@ class TestHistory:
     def test_history_filter_by_device(self, http, e2e):
         r = http.get(f"/history?device_id={e2e.host.device_id}", headers=_h(e2e.host))
         assert r.status_code == 200
-        for log in r.json():
+        for log in r.json()["items"]:
             assert e2e.host.device_id in (log["from_device_id"], log["to_device_id"])
 
     def test_history_entries_have_payload(self, http, e2e):
         r = http.get("/history?limit=1", headers=_h(e2e.host))
         assert r.status_code == 200
-        logs = r.json()
+        logs = r.json()["items"]
         assert len(logs) >= 1
         entry = logs[0]
         assert "msg_type" in entry

@@ -1,0 +1,9 @@
+FROM python:3.13-slim
+
+# Install custom CA certificates (for corporate proxies)
+COPY docker/certs/ /usr/local/share/ca-certificates/custom/
+RUN update-ca-certificates 2>/dev/null || true
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace

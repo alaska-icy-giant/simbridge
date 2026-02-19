@@ -17,8 +17,8 @@ import httpx
 import pytest
 import websockets
 
-BASE_URL = "http://localhost:8100"
-WS_BASE = "ws://localhost:8100"
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:8100")
+WS_BASE = os.environ.get("WS_BASE", "ws://localhost:8100")
 
 
 # ---------------------------------------------------------------------------
@@ -373,15 +373,16 @@ class TestHistoryPagination:
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=10) as ac:
             r = await ac.get("/history?limit=2", headers=_h(host))
         assert r.status_code == 200
-        logs = r.json()
-        assert len(logs) == 2
+        data = r.json()
+        assert len(data["items"]) == 2
+        assert data["total"] >= 5
 
         # Fetch with limit=200 (max) — should return all
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=10) as ac:
             r = await ac.get("/history?limit=200", headers=_h(host))
         assert r.status_code == 200
-        all_logs = r.json()
-        assert len(all_logs) >= 5
+        all_data = r.json()
+        assert len(all_data["items"]) >= 5
 
 
 # ---------------------------------------------------------------------------

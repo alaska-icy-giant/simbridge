@@ -15,14 +15,15 @@ keeps the auth token and device IDs available across all tests.
 
 import asyncio
 import json
+import os
 import uuid
 
 import httpx
 import pytest
 import websockets
 
-BASE_URL = "http://localhost:8100"
-WS_BASE = "ws://localhost:8100"
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:8100")
+WS_BASE = os.environ.get("WS_BASE", "ws://localhost:8100")
 
 
 # ---------------------------------------------------------------------------
@@ -181,32 +182,52 @@ class TestRelayOffline:
         resp = http.post("/sms", json={
             "to_device_id": state.host_id, "sim": 1, "to": "+155512345", "body": "hi",
         }, headers=_headers(state))
-        assert resp.status_code == 503
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "queued"
 
     def test_call_host_offline(self, http: httpx.Client, state: _State):
         resp = http.post("/call", json={
             "to_device_id": state.host_id, "sim": 1, "to": "+155512345",
         }, headers=_headers(state))
-        assert resp.status_code == 503
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "queued"
 
 
 # ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
 
+async def _drain_until(ws, predicate, timeout=5):
+    """Receive messages until one matches the predicate, skipping pending/queued deliveries."""
+    import asyncio as _aio
+    deadline = _aio.get_event_loop().time() + timeout
+    while True:
+        remaining = deadline - _aio.get_event_loop().time()
+        if remaining <= 0:
+            raise TimeoutError("No matching message received")
+        msg = json.loads(await _aio.wait_for(ws.recv(), timeout=remaining))
+        if predicate(msg):
+            return msg
+
+
+async def _wait_connected(ws):
+    """Drain messages until the 'connected' message arrives (skips queued commands)."""
+    return await _drain_until(ws, lambda m: m.get("type") == "connected")
+
+
 @pytest.mark.asyncio
 class TestWebSocket:
     async def test_host_connects(self, state: _State):
         url = f"{WS_BASE}/ws/host/{state.host_id}?token={state.token}"
         async with websockets.connect(url) as ws:
-            msg = json.loads(await ws.recv())
+            msg = await _wait_connected(ws)
             assert msg["type"] == "connected"
             assert msg["device_id"] == state.host_id
 
     async def test_client_connects(self, state: _State):
         url = f"{WS_BASE}/ws/client/{state.client_id}?token={state.token}"
         async with websockets.connect(url) as ws:
-            msg = json.loads(await ws.recv())
+            msg = await _wait_connected(ws)
             assert msg["type"] == "connected"
             assert msg["device_id"] == state.client_id
 
@@ -219,7 +240,7 @@ class TestWebSocket:
     async def test_ping_pong(self, state: _State):
         url = f"{WS_BASE}/ws/host/{state.host_id}?token={state.token}"
         async with websockets.connect(url) as ws:
-            await ws.recv()  # connected
+            await _wait_connected(ws)
             await ws.send(json.dumps({"type": "ping"}))
             msg = json.loads(await ws.recv())
             assert msg["type"] == "pong"
@@ -230,8 +251,8 @@ class TestWebSocket:
 
         async with websockets.connect(host_url) as ws_host, \
                    websockets.connect(client_url) as ws_client:
-            await ws_host.recv()   # connected
-            await ws_client.recv() # connected
+            await _wait_connected(ws_host)
+            await _wait_connected(ws_client)
 
             await ws_client.send(json.dumps({
                 "type": "command", "cmd": "SEND_SMS", "to_device_id": state.host_id,
@@ -247,8 +268,8 @@ class TestWebSocket:
 
         async with websockets.connect(host_url) as ws_host, \
                    websockets.connect(client_url) as ws_client:
-            await ws_host.recv()   # connected
-            await ws_client.recv() # connected
+            await _wait_connected(ws_host)
+            await _wait_connected(ws_client)
 
             await ws_host.send(json.dumps({
                 "type": "event", "data": "incoming_sms", "to_device_id": state.client_id,
@@ -260,9 +281,9 @@ class TestWebSocket:
     async def test_target_offline(self, state: _State):
         client_url = f"{WS_BASE}/ws/client/{state.client_id}?token={state.token}"
         async with websockets.connect(client_url) as ws:
-            await ws.recv()  # connected
+            await _wait_connected(ws)
             await ws.send(json.dumps({"type": "command", "cmd": "GET_SIMS"}))
-            msg = json.loads(await ws.recv())
+            msg = await _drain_until(ws, lambda m: "error" in m)
             assert msg["error"] == "target_offline"
 
 
@@ -321,14 +342,14 @@ class TestHistory:
     def test_history_has_entries(self, http: httpx.Client, state: _State):
         resp = http.get("/history", headers=_headers(state))
         assert resp.status_code == 200
-        logs = resp.json()
+        logs = resp.json()["items"]
         assert len(logs) > 0
 
     def test_history_filter_by_device(self, http: httpx.Client, state: _State):
         resp = http.get(f"/history?device_id={state.host_id}",
                         headers=_headers(state))
         assert resp.status_code == 200
-        logs = resp.json()
+        logs = resp.json()["items"]
         for log in logs:
             assert state.host_id in (log["from_device_id"], log["to_device_id"])
 
