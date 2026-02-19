@@ -2,3 +2,20 @@ __pycache__/
 *.pyc
 *.db
 .env
+
+# Android / Gradle
+host-app/.gradle/
+host-app/.idea/
+host-app/build/
+host-app/app/build/
+host-app/app/release/
+host-app/local.properties
+host-app/captures/
+host-app/.cxx/
+host-app/.externalNativeBuild/
+*.iml
+*.apk
+*.aab
+*.jks
+*.keystore
+.DS_Store
