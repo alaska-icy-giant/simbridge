@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,6 +23,10 @@ import com.simbridge.host.ui.theme.SimBridgeTheme
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
     private lateinit var prefs: Prefs
     private var bridgeService: BridgeService? = null
     private var serviceBound = false
@@ -29,7 +34,13 @@ class MainActivity : ComponentActivity() {
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            bridgeService = (binder as BridgeService.LocalBinder).service
+            // H-09: Safe cast to prevent NPE
+            val localBinder = binder as? BridgeService.LocalBinder
+            if (localBinder == null) {
+                Log.e(TAG, "onServiceConnected: binder is not LocalBinder")
+                return
+            }
+            bridgeService = localBinder.service
             serviceBound = true
             serviceState.value = bridgeService
         }
@@ -68,9 +79,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        // Bind to existing service if running
+        // H-08: Only bind if service is already running (don't auto-create on passive bind)
+        // Use BIND_AUTO_CREATE so the callback fires even if the service was started externally
         val intent = Intent(this, BridgeService::class.java)
-        bindService(intent, serviceConnection, 0)
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
     override fun onStop() {
@@ -84,7 +96,9 @@ class MainActivity : ComponentActivity() {
     private fun startBridgeService() {
         val intent = Intent(this, BridgeService::class.java)
         ContextCompat.startForegroundService(this, intent)
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        if (!serviceBound) {
+            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        }
     }
 
     private fun stopBridgeService() {

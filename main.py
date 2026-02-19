@@ -21,7 +21,7 @@ from auth import (
     hash_password,
     verify_password,
 )
-from models import Device, MessageLog, Pairing, PairingCode, User, init_db
+from models import Device, MessageLog, Pairing, PairingCode, PendingCommand, User, init_db
 
 load_dotenv()
 
@@ -306,15 +306,14 @@ def _get_paired_host(client_device_id: int, host_device_id: int, user_id: int, d
 async def _relay_command(
     host_device_id: int, msg: dict, from_device_id: int, db: Session
 ) -> dict:
-    """Send a command to the host via WebSocket and log it."""
-    async with _conn_lock:
-        ws = connections.get(host_device_id)
-    if not ws:
-        raise HTTPException(503, "Host device is offline")
-
+    """Send a command to the host via WebSocket. Queues if host is offline (R-15)."""
     req_id = msg.get("req_id") or str(uuid.uuid4())
     msg["req_id"] = req_id
 
+    async with _conn_lock:
+        ws = connections.get(host_device_id)
+
+    # Log message
     try:
         log = MessageLog(
             from_device_id=from_device_id,
@@ -327,6 +326,21 @@ async def _relay_command(
     except Exception as e:
         logger.error("Failed to log command: %s", e)
         db.rollback()
+
+    if not ws:
+        # R-15: Queue for later delivery instead of failing with 503
+        try:
+            pending = PendingCommand(
+                host_device_id=host_device_id,
+                from_device_id=from_device_id,
+                payload=json.dumps(msg),
+            )
+            db.add(pending)
+            db.commit()
+        except Exception as e:
+            logger.error("Failed to queue command: %s", e)
+            db.rollback()
+        return {"status": "queued", "req_id": req_id}
 
     try:
         await ws.send_json(msg)
@@ -411,6 +425,7 @@ async def get_sims(
 def get_history(
     device_id: int = Query(None),
     limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -419,7 +434,7 @@ def get_history(
         d.id for d in db.query(Device).filter(Device.user_id == user_id).all()
     ]
     if not user_device_ids:
-        return []
+        return {"items": [], "total": 0, "offset": offset, "limit": limit}
 
     q = db.query(MessageLog).filter(
         (MessageLog.from_device_id.in_(user_device_ids))
@@ -431,8 +446,9 @@ def get_history(
             | (MessageLog.to_device_id == device_id)
         )
 
-    logs = q.order_by(MessageLog.created_at.desc()).limit(limit).all()
-    return [
+    total = q.count()
+    logs = q.order_by(MessageLog.created_at.desc()).offset(offset).limit(limit).all()
+    items = [
         {
             "id": log.id,
             "from_device_id": log.from_device_id,
@@ -443,6 +459,7 @@ def get_history(
         }
         for log in logs
     ]
+    return {"items": items, "total": total, "offset": offset, "limit": limit}
 
 
 # ---------------------------------------------------------------------------
@@ -466,8 +483,14 @@ def _verify_device_ownership(device_id: int, user_id: int, expected_type: str, d
     return device
 
 
-async def _ws_loop(ws: WebSocket, device_id: int, device_type: str, db: Session):
-    """Shared WebSocket read loop for host and client."""
+ALLOWED_WS_TYPES = {"ping", "command", "event", "webrtc"}
+
+
+async def _ws_loop(ws: WebSocket, device_id: int, device_type: str):
+    """Shared WebSocket read loop for host and client.
+
+    Uses a fresh DB session per message to avoid stale-session issues (R-16).
+    """
     try:
         while True:
             raw = await ws.receive_text()
@@ -483,49 +506,55 @@ async def _ws_loop(ws: WebSocket, device_id: int, device_type: str, db: Session)
                 await ws.send_json({"type": "pong"})
                 continue
 
-            # Determine target device(s) based on pairings
-            if device_type == "client":
-                # Client sends commands to host
-                target_id = msg.get("to_device_id")
-                if not target_id:
-                    # Find first paired host
-                    pairing = db.query(Pairing).filter(
-                        Pairing.client_device_id == device_id
-                    ).first()
-                    if not pairing:
-                        await ws.send_json({"error": "no paired host"})
-                        continue
-                    target_id = pairing.host_device_id
-
-            elif device_type == "host":
-                # Host sends events to paired client(s)
-                target_id = msg.get("to_device_id")
-                if not target_id:
-                    # Find first paired client
-                    pairing = db.query(Pairing).filter(
-                        Pairing.host_device_id == device_id
-                    ).first()
-                    if not pairing:
-                        await ws.send_json({"error": "no paired client"})
-                        continue
-                    target_id = pairing.client_device_id
-            else:
-                await ws.send_json({"error": "unknown device type"})
+            # R-13: Validate message type
+            if msg_type not in ALLOWED_WS_TYPES:
+                await ws.send_json({"error": f"invalid message type: {msg_type}"})
                 continue
 
-            # Log message
+            # Use a fresh session per message (R-16)
+            db = SessionLocal()
             try:
-                log = MessageLog(
-                    from_device_id=device_id,
-                    to_device_id=target_id,
-                    msg_type=msg_type or "unknown",
-                    payload=raw,
-                )
-                db.add(log)
-                db.commit()
-            except Exception as e:
-                logger.error("Failed to log message: %s", e)
-                db.rollback()
+                # Determine target device(s) based on pairings
+                if device_type == "client":
+                    target_id = msg.get("to_device_id")
+                    if not target_id:
+                        pairing = db.query(Pairing).filter(
+                            Pairing.client_device_id == device_id
+                        ).first()
+                        if not pairing:
+                            await ws.send_json({"error": "no paired host"})
+                            continue
+                        target_id = pairing.host_device_id
+
+                elif device_type == "host":
+                    target_id = msg.get("to_device_id")
+                    if not target_id:
+                        pairing = db.query(Pairing).filter(
+                            Pairing.host_device_id == device_id
+                        ).first()
+                        if not pairing:
+                            await ws.send_json({"error": "no paired client"})
+                            continue
+                        target_id = pairing.client_device_id
+                else:
+                    await ws.send_json({"error": "unknown device type"})
+                    continue
+
+                # Log message
+                try:
+                    log = MessageLog(
+                        from_device_id=device_id,
+                        to_device_id=target_id,
+                        msg_type=msg_type or "unknown",
+                        payload=raw,
+                    )
+                    db.add(log)
+                    db.commit()
+                except Exception as e:
+                    logger.error("Failed to log message: %s", e)
+                    db.rollback()
+            finally:
+                db.close()
 
             # Forward to target (use lock to safely read connections)
             async with _conn_lock:
@@ -547,34 +576,118 @@ async def _ws_loop(ws: WebSocket, device_id: int, device_type: str, db: Session)
         pass
 
 
-@app.websocket("/ws/host/{device_id}")
-async def ws_host(ws: WebSocket, device_id: int, token: str = Query(...)):
-    user_id = _ws_auth(token)
+HEARTBEAT_INTERVAL = 30  # seconds
+HEARTBEAT_TIMEOUT = 60  # seconds — close connection if no pong received
+
+
+async def _server_heartbeat(ws: WebSocket, device_id: int):
+    """R-19: Server-initiated pings to detect dead connections."""
+    try:
+        while True:
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+            try:
+                await ws.send_json({"type": "ping"})
+            except Exception:
+                break
+    except asyncio.CancelledError:
+        pass
+
+
+async def _notify_paired_offline(device_id: int, device_type: str):
+    """R-18: Notify paired device(s) when a device goes offline."""
     db = SessionLocal()
     try:
-        device = _verify_device_ownership(device_id, user_id, "host", db)
-        await ws.accept()
-
-        # Reject duplicate connections for the same device (R-02)
-        async with _conn_lock:
-            old_ws = connections.get(device_id)
-            if old_ws:
-                try:
-                    await old_ws.close(1008, "Replaced by new connection")
-                except Exception:
-                    pass
-            connections[device_id] = ws
-
-        device.last_seen = datetime.now(timezone.utc)
-        db.commit()
-
-        await ws.send_json({"type": "connected", "device_id": device_id})
-        await _ws_loop(ws, device_id, "host", db)
+        if device_type == "host":
+            pairings = db.query(Pairing).filter(Pairing.host_device_id == device_id).all()
+            target_ids = [p.client_device_id for p in pairings]
+        else:
+            pairings = db.query(Pairing).filter(Pairing.client_device_id == device_id).all()
+            target_ids = [p.host_device_id for p in pairings]
     finally:
+        db.close()
+
+    for tid in target_ids:
         async with _conn_lock:
-            # Only remove if WE are still the registered connection
+            target_ws = connections.get(tid)
+        if target_ws:
+            try:
+                await target_ws.send_json({
+                    "type": "event",
+                    "event": "DEVICE_OFFLINE",
+                    "device_id": device_id,
+                })
+            except Exception:
+                pass
+
+
+async def _ws_connect_and_loop(ws: WebSocket, device_id: int, user_id: int, device_type: str):
+    """Shared connect/loop/cleanup logic for both host and client WebSocket endpoints."""
+    db = SessionLocal()
+    try:
+        _verify_device_ownership(device_id, user_id, device_type, db)
+    finally:
+        db.close()
+
+    await ws.accept()
+
+    # Register connection (R-02: with lock, close old duplicate)
+    async with _conn_lock:
+        old_ws = connections.get(device_id)
+        if old_ws:
+            try:
+                await old_ws.close(1008, "Replaced by new connection")
+            except Exception:
+                pass
+        connections[device_id] = ws
+
+    # R-10: Update last_seen but do NOT persist is_online (computed from connections dict)
+    db = SessionLocal()
+    try:
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if device:
+            device.last_seen = datetime.now(timezone.utc)
+            db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    # R-15: Deliver queued commands when host reconnects
+    if device_type == "host":
+        db = SessionLocal()
+        try:
+            pending = db.query(PendingCommand).filter(
+                PendingCommand.host_device_id == device_id,
+                PendingCommand.delivered == False,
+            ).order_by(PendingCommand.created_at).all()
+            for cmd in pending:
+                try:
+                    await ws.send_json(json.loads(cmd.payload))
+                    cmd.delivered = True
+                except Exception:
+                    break
+            if pending:
+                db.commit()
+                logger.info("Delivered %d queued commands to host %d", len(pending), device_id)
+        except Exception as e:
+            logger.error("Failed to deliver queued commands: %s", e)
+        finally:
+            db.close()
+
+    # Start server-side heartbeat (R-19)
+    heartbeat_task = asyncio.create_task(_server_heartbeat(ws, device_id))
+
+    try:
+        await ws.send_json({"type": "connected", "device_id": device_id})
+        await _ws_loop(ws, device_id, device_type)
+    finally:
+        heartbeat_task.cancel()
+        # Remove from connections (only if we're still the registered one)
+        async with _conn_lock:
             if connections.get(device_id) is ws:
                 connections.pop(device_id, None)
+        # Update last_seen on disconnect
+        db = SessionLocal()
         try:
             device = db.query(Device).filter(Device.id == device_id).first()
             if device:
@@ -582,40 +695,19 @@ async def ws_host(ws: WebSocket, device_id: int, token: str = Query(...)):
                 db.commit()
         except Exception:
             pass
-        db.close()
+        finally:
+            db.close()
+        # R-18: Notify paired devices
+        await _notify_paired_offline(device_id, device_type)
+
+
+@app.websocket("/ws/host/{device_id}")
+async def ws_host(ws: WebSocket, device_id: int, token: str = Query(...)):
+    user_id = _ws_auth(token)
+    await _ws_connect_and_loop(ws, device_id, user_id, "host")
 
 
 @app.websocket("/ws/client/{device_id}")
 async def ws_client(ws: WebSocket, device_id: int, token: str = Query(...)):
     user_id = _ws_auth(token)
-    db = SessionLocal()
-    try:
-        device = _verify_device_ownership(device_id, user_id, "client", db)
-        await ws.accept()
-
-        async with _conn_lock:
-            old_ws = connections.get(device_id)
-            if old_ws:
-                try:
-                    await old_ws.close(1008, "Replaced by new connection")
-                except Exception:
-                    pass
-            connections[device_id] = ws
-
-        device.last_seen = datetime.now(timezone.utc)
-        db.commit()
-
-        await ws.send_json({"type": "connected", "device_id": device_id})
-        await _ws_loop(ws, device_id, "client", db)
-    finally:
-        async with _conn_lock:
-            if connections.get(device_id) is ws:
-                connections.pop(device_id, None)
-        try:
-            device = db.query(Device).filter(Device.id == device_id).first()
-            if device:
-                device.last_seen = datetime.now(timezone.utc)
-                db.commit()
-        except Exception:
-            pass
-        db.close()
+    await _ws_connect_and_loop(ws, device_id, user_id, "client")

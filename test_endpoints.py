@@ -164,7 +164,9 @@ def test_sms_host_offline(client, auth_header, paired_devices):
         json={"to_device_id": host_id, "sim": 1, "to": "+1234", "body": "hi"},
         headers=auth_header,
     )
-    assert resp.status_code == 503
+    # R-15: Now queues instead of 503
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "queued"
 
 
 def test_call_host_offline(client, auth_header, paired_devices):
@@ -174,7 +176,9 @@ def test_call_host_offline(client, auth_header, paired_devices):
         json={"to_device_id": host_id, "sim": 1, "to": "+1234"},
         headers=auth_header,
     )
-    assert resp.status_code == 503
+    # R-15: Now queues instead of 503
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "queued"
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +188,10 @@ def test_call_host_offline(client, auth_header, paired_devices):
 def test_history_empty_no_devices(client, auth_header):
     resp = client.get("/history", headers=auth_header)
     assert resp.status_code == 200
-    assert resp.json() == []
+    data = resp.json()
+    # R-17: Paginated response format
+    assert data["items"] == []
+    assert data["total"] == 0
 
 
 def test_history_returns_logs(client, auth_header, paired_devices, db):
@@ -205,9 +212,11 @@ def test_history_returns_logs(client, auth_header, paired_devices, db):
 
     resp = client.get("/history", headers=auth_header)
     assert resp.status_code == 200
-    logs = resp.json()
-    assert len(logs) == 1
-    assert logs[0]["msg_type"] == "command"
+    data = resp.json()
+    # R-17: Paginated response format
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["msg_type"] == "command"
 
 
 def test_history_filtered_by_device_id(client, auth_header, paired_devices, db):
@@ -223,5 +232,7 @@ def test_history_filtered_by_device_id(client, auth_header, paired_devices, db):
 
     resp = client.get(f"/history?device_id={host_id}", headers=auth_header)
     assert resp.status_code == 200
+    data = resp.json()
     # Both logs involve the host, so both should appear
-    assert len(resp.json()) == 2
+    assert data["total"] == 2
+    assert len(data["items"]) == 2

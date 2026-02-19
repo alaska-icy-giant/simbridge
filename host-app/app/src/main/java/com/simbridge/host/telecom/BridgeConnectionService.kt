@@ -8,7 +8,7 @@ import android.util.Log
 
 /**
  * Android ConnectionService for managing call audio through SimBridge.
- * Registered as a PhoneAccount so the system routes call audio through us.
+ * H-14: Wired to BridgeService via onCallStateEvent static callback.
  */
 class BridgeConnectionService : ConnectionService() {
 
@@ -16,6 +16,12 @@ class BridgeConnectionService : ConnectionService() {
         private const val TAG = "BridgeConnService"
         private const val PRESENTATION_ALLOWED = 1
         var activeConnection: BridgeConnection? = null
+
+        /**
+         * H-14: Static callback set by BridgeService to receive call state events.
+         * When a BridgeConnection changes state, it calls this to forward the event.
+         */
+        var onCallStateEvent: ((state: String, address: String?) -> Unit)? = null
     }
 
     override fun onCreateOutgoingConnection(
@@ -27,6 +33,9 @@ class BridgeConnectionService : ConnectionService() {
             setInitializing()
             setAddress(request?.address, PRESENTATION_ALLOWED)
             connectionProperties = Connection.PROPERTY_SELF_MANAGED
+            onStateChanged = { state ->
+                onCallStateEvent?.invoke(state, request?.address?.schemeSpecificPart)
+            }
         }
         activeConnection = connection
         return connection
@@ -41,6 +50,9 @@ class BridgeConnectionService : ConnectionService() {
             setRinging()
             setAddress(request?.address, PRESENTATION_ALLOWED)
             connectionProperties = Connection.PROPERTY_SELF_MANAGED
+            onStateChanged = { state ->
+                onCallStateEvent?.invoke(state, request?.address?.schemeSpecificPart)
+            }
         }
         activeConnection = connection
         return connection
@@ -52,6 +64,7 @@ class BridgeConnectionService : ConnectionService() {
     ) {
         Log.e(TAG, "onCreateOutgoingConnectionFailed")
         activeConnection = null
+        onCallStateEvent?.invoke("error", null)
     }
 
     override fun onCreateIncomingConnectionFailed(
@@ -60,5 +73,6 @@ class BridgeConnectionService : ConnectionService() {
     ) {
         Log.e(TAG, "onCreateIncomingConnectionFailed")
         activeConnection = null
+        onCallStateEvent?.invoke("error", null)
     }
 }

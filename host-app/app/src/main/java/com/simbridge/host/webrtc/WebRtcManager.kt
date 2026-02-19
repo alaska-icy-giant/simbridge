@@ -1,6 +1,7 @@
 package com.simbridge.host.webrtc
 
 import android.content.Context
+import android.media.AudioManager
 import android.util.Log
 import org.webrtc.*
 
@@ -47,9 +48,14 @@ class WebRtcManager(private val context: Context) {
 
     /**
      * Creates a new PeerConnection with audio only (no video).
+     * H-11: Sets audio mode to MODE_IN_COMMUNICATION for optimal voice routing.
      */
     fun createPeerConnection() {
         val factory = peerConnectionFactory ?: return
+
+        // H-11: Configure audio mode for voice communication
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
 
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
@@ -186,6 +192,7 @@ class WebRtcManager(private val context: Context) {
         audioSource = null
         peerConnection = null
         peerConnectionFactory = null
+        resetAudioMode()
         Log.i(TAG, "WebRTC disposed")
     }
 
@@ -197,6 +204,12 @@ class WebRtcManager(private val context: Context) {
         localAudioTrack = null
         audioSource?.dispose()
         audioSource = null
+        resetAudioMode()
+    }
+
+    private fun resetAudioMode() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        audioManager?.mode = AudioManager.MODE_NORMAL
     }
 
     private class LoggingSdpObserver(

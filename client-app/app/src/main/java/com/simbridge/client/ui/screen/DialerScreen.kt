@@ -18,6 +18,9 @@ import com.simbridge.client.ui.component.SimSelector
 @Composable
 fun DialerScreen(service: ClientService?, onBack: () -> Unit) {
     var phoneNumber by remember { mutableStateOf("") }
+    // C-04: Validate phone number format
+    val phoneRegex = remember { Regex("^\\+?[\\d\\s\\-()]+$") }
+    val isValidPhone = phoneNumber.isNotBlank() && phoneRegex.matches(phoneNumber)
     var selectedSim by remember { mutableStateOf(1) }
     var sims by remember { mutableStateOf(service?.hostSims ?: emptyList()) }
     var callState by remember { mutableStateOf(service?.callState ?: CallState.IDLE) }
@@ -61,13 +64,17 @@ fun DialerScreen(service: ClientService?, onBack: () -> Unit) {
                 OutlinedTextField(
                     value = phoneNumber, onValueChange = { phoneNumber = it },
                     label = { Text("Phone Number") },
+                    isError = phoneNumber.isNotBlank() && !isValidPhone,
+                    supportingText = if (phoneNumber.isNotBlank() && !isValidPhone) {
+                        { Text("Invalid phone number format") }
+                    } else null,
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                 )
                 Spacer(Modifier.height(32.dp))
 
                 FloatingActionButton(
                     onClick = {
-                        if (phoneNumber.isNotBlank()) {
+                        if (isValidPhone) {
                             service?.commandSender?.makeCall(selectedSim, phoneNumber)
                         }
                     },

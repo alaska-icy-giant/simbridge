@@ -28,14 +28,16 @@ fun SmsScreen(service: ClientService?, onBack: () -> Unit) {
     var history by remember { mutableStateOf(service?.smsHistory ?: emptyList()) }
     val dateFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
+    // C-06: Capture service in a local val so dispose always cleans up the correct instance
     DisposableEffect(service) {
-        service?.onSimsUpdated = { sims = it }
-        service?.onSmsReceived = { history = service.smsHistory }
-        sims = service?.hostSims ?: emptyList()
-        history = service?.smsHistory ?: emptyList()
+        val svc = service
+        svc?.onSimsUpdated = { sims = it }
+        svc?.onSmsReceived = { history = svc.smsHistory }
+        sims = svc?.hostSims ?: emptyList()
+        history = svc?.smsHistory ?: emptyList()
         onDispose {
-            service?.onSimsUpdated = null
-            service?.onSmsReceived = null
+            svc?.onSimsUpdated = null
+            svc?.onSmsReceived = null
         }
     }
 

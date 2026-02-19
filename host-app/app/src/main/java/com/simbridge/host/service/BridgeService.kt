@@ -19,6 +19,7 @@ import com.simbridge.host.data.ConnectionStatus
 import com.simbridge.host.data.LogEntry
 import com.simbridge.host.data.Prefs
 import com.simbridge.host.data.WsMessage
+import com.simbridge.host.telecom.BridgeConnectionService
 import com.simbridge.host.webrtc.SignalingHandler
 import com.simbridge.host.webrtc.WebRtcManager
 
@@ -95,6 +96,18 @@ class BridgeService : Service() {
             addLog(LogEntry(direction = "IN", summary = "SMS from ${event.from}"))
             sendEvent(event)
         }
+
+        // H-14: Wire ConnectionService call state events to WebSocket
+        BridgeConnectionService.onCallStateEvent = { state, address ->
+            val event = WsMessage(
+                type = "event",
+                event = "CALL_STATE",
+                state = state,
+                from = address,
+            )
+            addLog(LogEntry(direction = "OUT", summary = "CALL_STATE: $state"))
+            sendEvent(event)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -108,6 +121,7 @@ class BridgeService : Service() {
 
     override fun onDestroy() {
         Log.i(TAG, "Service destroyed")
+        BridgeConnectionService.onCallStateEvent = null
         wsManager.disconnect()
         webRtcManager.dispose()
         unregisterSmsReceiver()

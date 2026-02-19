@@ -24,6 +24,19 @@ class SmsHandler(
      */
     fun sendSms(to: String, body: String, simSlot: Int?, reqId: String?) {
         try {
+            // H-10: Error if requested SIM slot doesn't exist instead of silent fallback
+            if (simSlot != null && simInfoProvider.getSubscriptionForSlot(simSlot) == null) {
+                sendEvent(
+                    WsMessage(
+                        type = "event",
+                        event = "SMS_SENT",
+                        status = "error",
+                        body = "SIM slot $simSlot not available",
+                        reqId = reqId,
+                    )
+                )
+                return
+            }
             val smsManager = getSmsManagerForSlot(simSlot)
             val sentIntent = PendingIntent.getBroadcast(
                 context, 0,

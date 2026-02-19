@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import com.simbridge.client.MainActivity
 import com.simbridge.client.R
 import com.simbridge.client.SimBridgeClientApp
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Builds notifications for incoming SMS and calls.
@@ -15,7 +16,8 @@ import com.simbridge.client.SimBridgeClientApp
 class NotificationHelper(private val context: Context) {
 
     private val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    private var nextId = 1000
+    // C-03: Atomic counter to prevent duplicate notification IDs under concurrent SMS
+    private val nextId = AtomicInteger(1000)
 
     fun notifyIncomingSms(from: String, body: String) {
         val intent = PendingIntent.getActivity(
@@ -36,7 +38,7 @@ class NotificationHelper(private val context: Context) {
             .setContentIntent(intent)
             .build()
 
-        manager.notify(nextId++, notification)
+        manager.notify(nextId.getAndIncrement(), notification)
     }
 
     fun notifyIncomingCall(from: String) {

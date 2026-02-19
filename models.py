@@ -96,6 +96,17 @@ class MessageLog(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class PendingCommand(Base):
+    __tablename__ = "pending_commands"
+
+    id = Column(Integer, primary_key=True)
+    host_device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    from_device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    payload = Column(Text, nullable=False)  # JSON string
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    delivered = Column(Boolean, default=False)
+
+
 def init_db(db_path: str = "simbridge.db") -> sessionmaker:
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
     Base.metadata.create_all(engine)

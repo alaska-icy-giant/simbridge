@@ -29,10 +29,12 @@ fun DashboardScreen(
 ) {
     val context = LocalContext.current
     var connectionStatus by remember { mutableStateOf(service?.connectionStatus ?: ConnectionStatus.DISCONNECTED) }
-    var isServiceRunning by remember { mutableStateOf(service != null) }
 
     val simInfoProvider = remember { SimInfoProvider(context) }
     var sims by remember { mutableStateOf<List<SimInfo>>(emptyList()) }
+
+    // H-13: Derive isServiceRunning from service reference, not local state
+    val isServiceRunning = service != null
 
     // Observe service status
     DisposableEffect(service) {
@@ -40,7 +42,6 @@ fun DashboardScreen(
             connectionStatus = status
         }
         connectionStatus = service?.connectionStatus ?: ConnectionStatus.DISCONNECTED
-        isServiceRunning = service != null
         onDispose {
             service?.onStatusChange = null
         }
@@ -77,17 +78,10 @@ fun DashboardScreen(
             // Connection status
             StatusCard(status = connectionStatus)
 
-            // Start/Stop button
+            // Start/Stop button — state derived from service, not local variable
             Button(
                 onClick = {
-                    if (isServiceRunning) {
-                        onStopService()
-                        isServiceRunning = false
-                        connectionStatus = ConnectionStatus.DISCONNECTED
-                    } else {
-                        onStartService()
-                        isServiceRunning = true
-                    }
+                    if (isServiceRunning) onStopService() else onStartService()
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = if (isServiceRunning) {

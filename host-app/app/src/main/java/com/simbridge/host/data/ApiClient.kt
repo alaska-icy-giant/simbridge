@@ -17,6 +17,18 @@ class ApiClient(private val prefs: Prefs) {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            var lastException: IOException? = null
+            for (attempt in 1..3) {
+                try {
+                    return@addInterceptor chain.proceed(chain.request())
+                } catch (e: IOException) {
+                    lastException = e
+                    if (attempt < 3) Thread.sleep(1000L * attempt)
+                }
+            }
+            throw lastException!!
+        }
         .build()
 
     /**
