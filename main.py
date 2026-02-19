@@ -1,14 +1,17 @@
+import asyncio
 import json
+import logging
 import os
-import random
+import secrets
 import string
 import uuid
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from auth import (
@@ -22,12 +25,22 @@ from models import Device, MessageLog, Pairing, PairingCode, User, init_db
 
 load_dotenv()
 
+logger = logging.getLogger("simbridge")
+
 DB_PATH = os.getenv("DB_PATH", "simbridge.db")
 
 SessionLocal = None
 
 # In-memory WebSocket connections: device_id -> WebSocket
+# Protected by _conn_lock for all reads and writes.
 connections: dict[int, WebSocket] = {}
+_conn_lock = asyncio.Lock()
+
+# Rate limiting: track recent auth attempts per IP-like key (username).
+# Maps username -> list of timestamps. Cleaned lazily.
+_auth_attempts: dict[str, list[float]] = defaultdict(list)
+AUTH_RATE_LIMIT = 5  # max attempts
+AUTH_RATE_WINDOW = 60  # per N seconds
 
 
 @asynccontextmanager
@@ -68,16 +81,16 @@ class PairConfirm(BaseModel):
 
 
 class SmsCommand(BaseModel):
-    to_device_id: int  # host device to send through
-    sim: int  # SIM slot (1 or 2)
-    to: str  # phone number
-    body: str
+    to_device_id: int = Field(..., gt=0)
+    sim: int = Field(..., ge=1, le=2)
+    to: str = Field(..., min_length=1, max_length=30)
+    body: str = Field(..., min_length=1, max_length=1600)
 
 
 class CallCommand(BaseModel):
-    to_device_id: int
-    sim: int
-    to: str
+    to_device_id: int = Field(..., gt=0)
+    sim: int = Field(..., ge=1, le=2)
+    to: str = Field(..., min_length=1, max_length=30)
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +108,21 @@ def register(req: AuthRequest, db: Session = Depends(get_db)):
     return {"id": user.id, "username": user.username}
 
 
+def _check_rate_limit(key: str):
+    """Enforce per-key rate limiting. Raises 429 if exceeded."""
+    import time
+    now = time.time()
+    attempts = _auth_attempts[key]
+    # Prune old entries
+    _auth_attempts[key] = [t for t in attempts if now - t < AUTH_RATE_WINDOW]
+    if len(_auth_attempts[key]) >= AUTH_RATE_LIMIT:
+        raise HTTPException(429, "Too many attempts. Try again later.")
+    _auth_attempts[key].append(now)
+
+
 @app.post("/auth/login")
 def login(req: AuthRequest, db: Session = Depends(get_db)):
+    _check_rate_limit(req.username)
     user = db.query(User).filter(User.username == req.username).first()
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(401, "Invalid credentials")
@@ -151,7 +177,8 @@ def list_devices(
 # ---------------------------------------------------------------------------
 
 def _generate_code() -> str:
-    return "".join(random.choices(string.digits, k=6))
+    """Generate a cryptographically secure 6-digit pairing code."""
+    return "".join(secrets.choice(string.digits) for _ in range(6))
 
 
 @app.post("/pair")
@@ -165,6 +192,12 @@ def create_pairing_code(
     ).first()
     if not device:
         raise HTTPException(404, "Host device not found")
+
+    # Expire any previous unused codes for this host
+    db.query(PairingCode).filter(
+        PairingCode.host_device_id == host_device_id,
+        PairingCode.used == False,
+    ).update({"used": True})
 
     code = _generate_code()
     pc = PairingCode(
@@ -193,6 +226,9 @@ def confirm_pairing(
     if not client_device:
         raise HTTPException(404, "Client device not found")
 
+    # Rate limit pairing attempts to prevent brute-force
+    _check_rate_limit(f"pair:{req.client_device_id}")
+
     # Find valid pairing code
     pc = db.query(PairingCode).filter(
         PairingCode.code == req.code,
@@ -201,6 +237,10 @@ def confirm_pairing(
     ).first()
     if not pc:
         raise HTTPException(400, "Invalid or expired pairing code")
+
+    # Verify the pairing code belongs to the same user (R-03: prevent cross-user pairing)
+    if pc.user_id != user_id:
+        raise HTTPException(403, "Pairing code does not belong to your account")
 
     # Check if pairing already exists
     existing = db.query(Pairing).filter(
@@ -236,9 +276,12 @@ def _get_paired_host(client_device_id: int, host_device_id: int, user_id: int, d
     ).first()
     if not pairing:
         raise HTTPException(403, "Devices are not paired")
-    host = db.query(Device).filter(Device.id == host_device_id).first()
+    host = db.query(Device).filter(
+        Device.id == host_device_id,
+        Device.user_id == user_id,
+    ).first()
     if not host:
-        raise HTTPException(404, "Host device not found")
+        raise HTTPException(403, "Host device not found or not yours")
     return host
 
 
@@ -443,20 +486,28 @@ async def _ws_loop(ws: WebSocket, device_id: int, device_type: str, db: Session)
                 continue
 
             # Log message
-            log = MessageLog(
-                from_device_id=device_id,
-                to_device_id=target_id,
-                msg_type=msg_type or "unknown",
-                payload=raw,
-            )
-            db.add(log)
-            db.commit()
+            try:
+                log = MessageLog(
+                    from_device_id=device_id,
+                    to_device_id=target_id,
+                    msg_type=msg_type or "unknown",
+                    payload=raw,
+                )
+                db.add(log)
+                db.commit()
+            except Exception as e:
+                logger.error("Failed to log message: %s", e)
+                db.rollback()
 
-            # Forward to target
-            target_ws = connections.get(target_id)
+            # Forward to target (use lock to safely read connections)
+            async with _conn_lock:
+                target_ws = connections.get(target_id)
             if target_ws:
                 msg["from_device_id"] = device_id
-                await target_ws.send_json(msg)
+                try:
+                    await target_ws.send_json(msg)
+                except Exception as e:
+                    logger.error("Failed to forward message to %d: %s", target_id, e)
             else:
                 await ws.send_json({
                     "error": "target_offline",

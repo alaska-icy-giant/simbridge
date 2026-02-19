@@ -6,7 +6,9 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is required")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 
