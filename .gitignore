@@ -13,6 +13,15 @@ host-app/local.properties
 host-app/captures/
 host-app/.cxx/
 host-app/.externalNativeBuild/
+client-app/.gradle/
+client-app/.idea/
+client-app/build/
+client-app/app/build/
+client-app/app/release/
+client-app/local.properties
+client-app/captures/
+client-app/.cxx/
+client-app/.externalNativeBuild/
 *.iml
 *.apk
 *.aab
