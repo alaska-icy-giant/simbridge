@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Bundle Configuration -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>SimBridge Host</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+
+    <!-- Minimum iOS Version -->
+    <key>MinimumOSVersion</key>
+    <string>16.0</string>
+
+    <!-- Supported Interface Orientations -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+
+    <!-- Background Modes -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>voip</string>
+        <string>fetch</string>
+        <string>audio</string>
+    </array>
+
+    <!-- Privacy / Permission Descriptions -->
+    <!-- Microphone: Required for WebRTC call audio and AudioBridge -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>SimBridge needs microphone access to relay call audio between devices.</string>
+
+    <!-- Camera: May be needed for future video call support -->
+    <key>NSCameraUsageDescription</key>
+    <string>SimBridge may use the camera for video calls in a future update.</string>
+
+    <!-- Contacts: May be needed for caller ID lookup -->
+    <key>NSContactsUsageDescription</key>
+    <string>SimBridge can use your contacts to display caller names.</string>
+
+    <!-- Speech Recognition: For potential voice command features -->
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>SimBridge may use speech recognition for voice commands.</string>
+
+    <!-- Local Network: For discovering relay server on local network -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>SimBridge uses the local network to connect to the relay server.</string>
+
+    <!-- Bluetooth: For Bluetooth audio during calls -->
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>SimBridge supports Bluetooth audio devices during calls.</string>
+
+    <!-- App Transport Security: Allow HTTP for local development servers -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <false/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+
+    <!-- Launch Storyboard (required, but SwiftUI handles the UI) -->
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <!-- Scene Configuration for SwiftUI -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+</dict>
+</plist>

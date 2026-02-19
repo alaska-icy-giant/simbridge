@@ -1,0 +1,32 @@
+// SimBridgeClientApp.swift
+// SimBridge Client — iOS Remote Control App
+// Entry point for the SwiftUI application.
+
+import SwiftUI
+import UserNotifications
+
+@main
+struct SimBridgeClientApp: App {
+    @StateObject private var appState = AppState()
+
+    init() {
+        requestNotificationPermission()
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            AppNavigation()
+                .environmentObject(appState)
+                .preferredColorScheme(nil) // respect system setting
+        }
+    }
+
+    private func requestNotificationPermission() {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("Notification permission error: \(error.localizedDescription)")
+            }
+        }
+    }
+}

@@ -1,0 +1,89 @@
+name: E2E Tests
+
+on: [push, pull_request]
+
+env:
+  JWT_SECRET: "ci-test-secret-at-least-32-chars!!"
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run unit tests
+        env:
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+        run: |
+          pytest test_auth.py test_endpoints.py test_websocket.py \
+            -v --junitxml=results-unit.xml
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: results-unit.xml
+
+  integration-tests:
+    name: Integration & E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build SimBridge Docker image
+        run: docker build -t simbridge -f docker/Dockerfile .
+
+      - name: Start SimBridge container
+        run: |
+          docker run -d --name simbridge \
+            -p 8100:8100 \
+            -e JWT_SECRET="${{ env.JWT_SECRET }}" \
+            simbridge
+
+      - name: Wait for SimBridge to be ready
+        run: |
+          echo "Waiting for SimBridge..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8100/docs > /dev/null 2>&1; then
+              echo "SimBridge is ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "SimBridge failed to start within 30 seconds."
+          docker logs simbridge
+          exit 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run integration tests
+        env:
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+        run: |
+          pytest test_container.py test_e2e.py test_e2e_advanced.py \
+            -v --junitxml=results-integration.xml
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: results-integration.xml
+
+      - name: Print container logs on failure
+        if: failure()
+        run: docker logs simbridge
+
+      - name: Stop SimBridge container
+        if: always()
+        run: docker rm -f simbridge 2>/dev/null || true

@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  simbridge:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8100:8100"
+    environment:
+      JWT_SECRET: "e2e-test-secret-32chars-minimum!!"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/docs')"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+
+  test-runner:
+    image: python:3.13-slim
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    environment:
+      SIMBRIDGE_URL: "http://simbridge:8100"
+    depends_on:
+      simbridge:
+        condition: service_healthy
+    command: >
+      bash -c "
+        pip install --no-cache-dir -r requirements.txt &&
+        pytest test_container.py test_e2e.py test_e2e_advanced.py
+          -v --junitxml=results.xml
+          --override-ini='base_url=http://simbridge:8100'
+      "
