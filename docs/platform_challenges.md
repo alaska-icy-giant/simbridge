@@ -1,6 +1,8 @@
 # SimBridge — Platform Challenges & Mitigations
 
-Six hard problems that affect a SIM-bridging system on Android, what the Host App does today, what's still missing, and how the Relay Server helps (or should help).
+Hard problems that affect a SIM-bridging system on Android and iOS, what the apps do today, what's still missing, and how the Relay Server helps (or should help).
+
+Sections 1–6 cover Android-specific challenges. Section 7 covers iOS platform restrictions.
 
 ---
 
@@ -403,7 +405,212 @@ The relay server is **the** solution to NAT traversal. Specifically:
 
 ---
 
+## 7. iOS Platform Restrictions
+
+Unlike the six Android challenges above — which are hard but solvable — several iOS restrictions are **platform-enforced and have no workaround** on App Store builds. These fundamentally limit what the iOS Host App can do and, to a lesser extent, what the iOS Client App can do in the background.
+
+### 7a. SMS — Cannot Send or Receive Programmatically
+
+#### The Problem
+
+iOS has no equivalent of Android's `SmsManager` or `BroadcastReceiver` for SMS:
+
+| Operation | Android | iOS | Gap |
+|-----------|---------|-----|-----|
+| **Send SMS automatically** | `SmsManager.sendTextMessage()` — fully background, no UI | `MFMessageComposeViewController` — must present UI, user must tap Send | Cannot relay SMS commands without user interaction |
+| **Send SMS in background** | Works via foreground service | **Not possible** — `MFMessageComposeViewController` requires the app to be in the foreground with a visible view controller | Host must be open and user must confirm every message |
+| **Intercept incoming SMS** | `BroadcastReceiver` with `SMS_RECEIVED_ACTION` — automatic, real-time | **No public API** — `MessageFilterExtension` only classifies SMS for the system, cannot read content or forward it | Incoming SMS relay is impossible on App Store builds |
+| **Read SMS history** | `content://sms` content provider | **Not possible** — no API to read the SMS database | Cannot sync message history |
+
+#### What the iOS Host App Does Today
+
+- **`SmsHandler.swift`**: Presents `MFMessageComposeViewController` for user-initiated sends. This requires the app to be in the foreground and the user to manually tap "Send" in the system compose sheet.
+- **`SmsReceiver.swift`**: Documented as non-functional. No incoming SMS interception.
+
+#### Why This Cannot Be Fixed
+
+Apple enforces SMS sandboxing at the OS level. There is no entitlement, MDM profile, or enterprise certificate that grants programmatic SMS access. The only known workarounds are:
+
+1. **Jailbroken devices** — Private `CTMessageCenter` API provides full SMS access. Not viable for general users.
+2. **Shortcuts/Automation** — iOS Shortcuts can send messages via the Messages app, but requires user confirmation and cannot be triggered by a WebSocket event.
+3. **iMessage-based relay** — A Mac running the Messages app can programmatically send iMessages (not SMS) via AppleScript. This is a different product entirely.
+
+#### Impact
+
+**The iOS Host App cannot serve as an SMS relay.** This is the most significant iOS limitation. Users who need SMS bridging must use an Android Host.
+
+#### How the Relay Helps
+
+The relay can't fix an OS-level restriction, but it can:
+
+1. **Detect the host platform** — If the host device reports `platform: "ios"` during registration, the relay can pre-reject SMS commands with a clear error: `"SMS relay not supported on iOS hosts"`.
+2. **Suggest Android Host** — The client UI can show a warning when paired with an iOS host: "SMS features unavailable — pair with an Android host for full functionality."
+
+---
+
+### 7b. Background Execution — App Suspended Within Seconds
+
+#### The Problem
+
+iOS aggressively suspends apps that are not in the foreground. Unlike Android's foreground service (which can run indefinitely with a notification), iOS provides no equivalent for third-party apps:
+
+| Mechanism | Max Background Time | Reliability | Notes |
+|-----------|-------------------|-------------|-------|
+| **`beginBackgroundTask`** | ~30 seconds (iOS 13+) | Reliable but short | For finishing in-progress work only |
+| **`BGAppRefreshTask`** | ~30 seconds, scheduled by OS | Unreliable timing | OS decides when to wake the app; can be hours between wakes |
+| **`BGProcessingTask`** | Several minutes | Unreliable timing | Only runs when device is charging and on Wi-Fi |
+| **VoIP push (`PushKit`)** | Immediate wake, ~30 seconds | Reliable | Apple **rejects** apps that use VoIP push without actual VoIP calls. App review checks for CallKit integration. |
+| **APNs push notification** | Wakes app for ~30 seconds | Reliable | Requires server-side APNs integration. Cannot maintain a WebSocket. |
+| **Location updates** | Continuous if `Always` permission granted | Reliable | Apple rejects apps that abuse location for keep-alive. Requires genuine location need. |
+| **Audio playback** | Continuous while playing | Reliable | Playing silence is rejected by App Review. |
+
+#### What the iOS Apps Do Today
+
+- **Host App**: Uses `BGTaskScheduler` for background refresh. The WebSocket disconnects within ~30 seconds of backgrounding. The app goes "offline" from the relay's perspective.
+- **Client App**: Same limitation. Misses real-time events (incoming SMS, call state changes) when backgrounded.
+
+#### What's Missing
+
+| Gap | Severity | Mitigation |
+|-----|----------|------------|
+| **No APNs push integration** | Critical | When the relay receives a command for an offline iOS host, it should send an APNs push to wake the app. The app has ~30 seconds to reconnect the WebSocket, process the command, and respond. |
+| **No VoIP push for calls** | High | For incoming call relay, VoIP push via `PushKit` is the correct mechanism. It wakes the app instantly and provides enough time to show a CallKit incoming call UI. This is a legitimate VoIP use case that Apple approves. |
+| **No `URLSession` background transfer** | Medium | For non-urgent commands, `URLSession` background configurations can download/upload data while the app is suspended. Could be used for queued command delivery. |
+| **No connectivity state tracking** | Medium | The apps don't inform the relay whether they're about to go to background. A "going to sleep" message would let the relay queue commands instead of trying (and failing) to deliver via dead WebSocket. |
+
+#### How the Relay Helps (Essential for iOS)
+
+The relay is the **only** solution for iOS background delivery:
+
+1. **APNs push for commands** — When a command arrives and the iOS host/client WebSocket is dead, send an APNs push notification. The app wakes, reconnects the WebSocket, and processes queued commands. Requires:
+   - APNs certificate or key configured on the relay server
+   - Device push token stored during registration
+   - `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` in the app
+
+2. **VoIP push for calls** — Use `PushKit` to wake the iOS host for incoming call relay. This is the only way to show an incoming call UI when the app is backgrounded. Apple explicitly approves this for VoIP apps.
+
+3. **Command queuing** — Already partially implemented (`PendingCommand` table). For iOS devices, queuing is not optional — it's the primary delivery mechanism since the WebSocket will be dead most of the time the app is backgrounded.
+
+4. **Platform-aware delivery** — The relay should track each device's platform (`android`/`ios`) and use different delivery strategies:
+   - Android: Deliver via WebSocket (usually connected) with FCM fallback
+   - iOS: Deliver via WebSocket if connected, otherwise queue + APNs push
+
+---
+
+### 7c. Call Audio — Cannot Capture on iOS
+
+#### The Problem
+
+iOS completely sandboxes call audio. There is no API — public or private — to capture the audio of a cellular phone call on a non-jailbroken device:
+
+| Approach | Android | iOS |
+|----------|---------|-----|
+| **Capture call audio directly** | `VOICE_CALL` source (system apps) or `VOICE_COMMUNICATION` (mic only) | **Not possible** — no audio source for calls |
+| **Speakerphone + mic capture** | Works (poor quality) | `AVAudioEngine` cannot tap call audio even on speaker |
+| **ConnectionService routing** | Can intercept audio for self-managed calls | CallKit provides call UI but **no audio access** to the cellular call |
+| **WebRTC during call** | Can run alongside a cellular call | `AVAudioSession` conflict — iOS switches audio routes when a cellular call starts, disrupting any existing WebRTC session |
+
+#### What the iOS Host App Does Today
+
+- **`CallManager.swift`**: Uses CallKit `CXCallController` to place and end calls. Works correctly for call control.
+- **`AudioBridge.swift`**: Uses `AVAudioEngine` for mic capture. Works for WebRTC audio **when no cellular call is active**. During a cellular call, iOS takes exclusive control of the audio session.
+
+#### Why This Cannot Be Fixed
+
+Apple does not expose call audio to third-party apps for privacy reasons. This is enforced at the kernel level. There is no entitlement, MDM profile, or enterprise workaround.
+
+#### Impact
+
+**The iOS Host App cannot bridge call audio.** It can place/end calls (useful as a remote dialer), but the Client cannot hear the conversation. Users who need call audio bridging must use an Android Host.
+
+#### Partial Workaround: WebRTC-Only Calls
+
+The iOS Host *can* make WebRTC-only calls (app-to-app, not cellular). If both parties use SimBridge, the call goes entirely through WebRTC without touching the cellular network, and audio works normally. This is not a SIM-bridge use case, but it's functional.
+
+---
+
+### 7d. SIM Info — Limited Carrier Data
+
+#### The Problem
+
+iOS provides minimal SIM card information compared to Android:
+
+| Data | Android | iOS |
+|------|---------|-----|
+| **Number of SIM slots** | `SubscriptionManager.activeSubscriptionInfoList.size` | Not exposed. `CTTelephonyNetworkInfo().serviceSubscriberCellularProviders` returns carriers but no slot numbers. |
+| **Phone number** | `SubscriptionInfo.number` (often empty) or `getPhoneNumber()` on Android 13+ | **Not available**. No API returns the phone number. |
+| **Carrier name** | `SubscriptionInfo.carrierName` | `CTCarrier.carrierName` — works |
+| **MCC/MNC** | `SubscriptionInfo.mcc` / `.mnc` | `CTCarrier.mobileCountryCode` / `.mobileNetworkCode` — works |
+| **SIM slot index** | `SubscriptionInfo.simSlotIndex` (0-indexed) | Not exposed |
+| **Subscription ID** | `SubscriptionInfo.subscriptionId` (stable) | Not exposed |
+| **eSIM detection** | `SubscriptionInfo.isEmbedded` | Not exposed |
+
+#### What the iOS Host App Does Today
+
+- **`SimInfoProvider.swift`**: Uses `CTTelephonyNetworkInfo().serviceSubscriberCellularProviders` to list carriers. Returns carrier name and MCC/MNC. No slot numbers or phone numbers.
+
+#### Impact
+
+Low severity. The Client sees carrier names (e.g., "CHT", "T-Mobile") instead of phone numbers. SIM selection uses carrier name as the identifier. This is adequate for most users but less precise than Android's slot-based selection.
+
+---
+
+### 7e. iOS Client App — Background Event Delivery
+
+#### The Problem
+
+The iOS Client App works fully in the foreground but cannot maintain a WebSocket connection in the background. This means:
+
+1. **Incoming SMS notifications are delayed** — The Client only learns about new SMS when the app is reopened or an APNs push wakes it.
+2. **Call state changes are missed** — If a call ends while the Client is backgrounded, the UI is stale when the user returns.
+3. **Connection status shows "Disconnected"** — The Client correctly shows the relay connection as offline when backgrounded, which may confuse users.
+
+#### What the iOS Client App Does Today
+
+- WebSocket connects on app foreground, disconnects ~30 seconds after backgrounding.
+- No APNs push integration for event delivery.
+- `BGTaskScheduler` registered but provides infrequent background refresh.
+
+#### What's Missing
+
+| Gap | Severity | Mitigation |
+|-----|----------|------------|
+| **No APNs push for events** | High | Relay should send push notifications for incoming SMS and call events when the iOS client WebSocket is dead. The notification content can include the event payload. |
+| **No background WebSocket reconnect** | Medium | On `BGAppRefreshTask` wake, reconnect the WebSocket, drain queued events, and disconnect. |
+| **No Notification Service Extension** | Low | An `UNNotificationServiceExtension` can modify push content before display — e.g., decrypt an encrypted SMS body or fetch additional data from the relay. |
+
+---
+
+### iOS Summary Matrix
+
+| Restriction | Host App | Client App | Severity | Workaround |
+|-------------|----------|------------|----------|------------|
+| **No programmatic SMS** | Cannot send or receive SMS automatically | N/A (Client doesn't send SMS directly) | **Critical** | None on App Store. Use Android Host. |
+| **No incoming SMS intercept** | Cannot forward incoming SMS to Client | Misses incoming SMS events when backgrounded | **Critical** | None on App Store. APNs push helps Client. |
+| **App suspended in background** | WebSocket dies; host goes offline | WebSocket dies; misses events | **Critical** | APNs push + VoIP push + command queuing |
+| **No call audio capture** | Cannot bridge call audio | Cannot hear remote call | **High** | None. WebRTC-only calls work. |
+| **Limited SIM info** | Carrier name only, no phone number or slot | Displays carrier names instead of numbers | **Low** | Acceptable UX with carrier-name labels |
+
+### Recommended Configuration
+
+| Setup | SMS Relay | Call Relay | Call Audio | Background | Rating |
+|-------|-----------|------------|------------|------------|--------|
+| **Android Host + Android Client** | Full | Full | Partial (speakerphone) | Reliable (foreground service) | Best |
+| **Android Host + iOS Client** | Full | Full | Partial | Client limited when backgrounded | Good |
+| **iOS Host + Android Client** | **Broken** | Control only | **No audio** | Host limited when backgrounded | Poor |
+| **iOS Host + iOS Client** | **Broken** | Control only | **No audio** | Both limited when backgrounded | Not recommended |
+
+### Top 3 Actions for iOS Production Readiness
+
+1. **Implement APNs push delivery** in the relay — This is the single most impactful improvement for iOS. Without push, iOS devices are offline whenever backgrounded, which is most of the time.
+2. **Add platform detection to the relay** — Store `platform: "ios" | "android"` on device registration. Use platform-aware delivery (WebSocket for Android, push + queue for iOS). Pre-reject impossible commands (SMS to iOS host) with clear errors.
+3. **Implement VoIP push for call relay** — Use `PushKit` to wake the iOS host for incoming call notifications. This is the only Apple-approved mechanism for real-time call delivery to a backgrounded app.
+
+---
+
 ## Summary Matrix
+
+### Android Challenges
 
 | Challenge | Host App Status | Relay Status | Priority |
 |-----------|----------------|--------------|----------|
@@ -414,8 +621,20 @@ The relay server is **the** solution to NAT traversal. Specifically:
 | **Carrier restrictions** | No rate limiting, no delivery receipts | No server-side rate limiting | High |
 | **NAT traversal** | STUN only (Google), no TURN | No TURN server, no credential provisioning | Critical |
 
-### Top 3 Actions for Production Readiness
+### iOS Challenges
+
+| Challenge | Host App | Client App | Relay Status | Priority |
+|-----------|----------|------------|--------------|----------|
+| **No programmatic SMS** | Cannot send/receive | N/A | No platform detection, no pre-rejection | Critical |
+| **App suspended in background** | WebSocket dies ~30s after backgrounding | Same | No APNs push, no VoIP push | Critical |
+| **No call audio capture** | Cannot bridge call audio | Cannot hear remote call | Passive | High |
+| **Limited SIM info** | Carrier name only | Displays carrier names | No platform-aware SIM handling | Low |
+| **Background event delivery** | N/A | Misses events when backgrounded | No push notification for events | High |
+
+### Top 5 Actions for Production Readiness
 
 1. **Deploy a TURN server** alongside the relay and provision dynamic credentials via signaling. Without this, ~30–50% of WebRTC calls will fail.
-2. **Fix the audio bridge** — Either wire `AudioBridge` into the WebRTC track, or (more practically) use `ConnectionService` audio routing with speakerphone fallback.
-3. **Add server-side rate limiting and command buffering** in the relay to protect against carrier throttling and host downtime.
+2. **Implement APNs push delivery** in the relay for iOS devices. Without push, iOS apps are offline whenever backgrounded.
+3. **Fix the Android audio bridge** — Either wire `AudioBridge` into the WebRTC track, or (more practically) use `ConnectionService` audio routing with speakerphone fallback.
+4. **Add platform detection and platform-aware delivery** — Store device platform on registration. Use WebSocket + FCM for Android, push + queue for iOS. Pre-reject impossible commands (SMS to iOS host) with clear errors.
+5. **Add server-side rate limiting and command buffering** in the relay to protect against carrier throttling and host downtime.
