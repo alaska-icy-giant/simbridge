@@ -46,7 +46,10 @@ class WebSocketManager(
 
     fun disconnect() {
         intentionalClose = true
-        reconnectFuture?.cancel(false)
+        synchronized(this) {
+            reconnectFuture?.cancel(false)
+            reconnectFuture = null
+        }
         webSocket?.close(1000, "User disconnect")
         webSocket = null
         onStatusChange(ConnectionStatus.DISCONNECTED)
@@ -90,7 +93,9 @@ class WebSocketManager(
         val delaySec = minOf(1L shl attempt, MAX_BACKOFF_SEC)
         Log.i(TAG, "Reconnecting in ${delaySec}s (attempt ${attempt + 1})")
         onStatusChange(ConnectionStatus.CONNECTING)
-        reconnectFuture = scheduler.schedule({ doConnect() }, delaySec, TimeUnit.SECONDS)
+        synchronized(this) {
+            reconnectFuture = scheduler.schedule({ doConnect() }, delaySec, TimeUnit.SECONDS)
+        }
     }
 
     private inner class WsListener : WebSocketListener() {

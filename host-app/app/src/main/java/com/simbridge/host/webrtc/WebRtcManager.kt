@@ -123,8 +123,9 @@ class WebRtcManager(private val context: Context) {
         }
         peerConnection?.createOffer(object : SdpObserver {
             override fun onCreateSuccess(sdp: SessionDescription?) {
-                peerConnection?.setLocalDescription(NoOpSdpObserver(), sdp)
-                callback(sdp)
+                peerConnection?.setLocalDescription(LoggingSdpObserver("setLocalDesc(offer)") {
+                    callback(sdp)
+                }, sdp)
             }
             override fun onCreateFailure(error: String?) {
                 Log.e(TAG, "Create offer failed: $error")
@@ -145,8 +146,9 @@ class WebRtcManager(private val context: Context) {
         }
         peerConnection?.createAnswer(object : SdpObserver {
             override fun onCreateSuccess(sdp: SessionDescription?) {
-                peerConnection?.setLocalDescription(NoOpSdpObserver(), sdp)
-                callback(sdp)
+                peerConnection?.setLocalDescription(LoggingSdpObserver("setLocalDesc(answer)") {
+                    callback(sdp)
+                }, sdp)
             }
             override fun onCreateFailure(error: String?) {
                 Log.e(TAG, "Create answer failed: $error")
@@ -197,10 +199,22 @@ class WebRtcManager(private val context: Context) {
         audioSource = null
     }
 
-    private class NoOpSdpObserver : SdpObserver {
+    private class LoggingSdpObserver(
+        private val label: String,
+        private val onSuccess: (() -> Unit)? = null,
+    ) : SdpObserver {
         override fun onCreateSuccess(sdp: SessionDescription?) {}
         override fun onCreateFailure(error: String?) {}
-        override fun onSetSuccess() {}
-        override fun onSetFailure(error: String?) {}
+        override fun onSetSuccess() {
+            Log.d(TAG, "$label succeeded")
+            onSuccess?.invoke()
+        }
+        override fun onSetFailure(error: String?) {
+            Log.e(TAG, "$label failed: $error")
+        }
+
+        companion object {
+            private const val TAG = "WebRtcManager"
+        }
     }
 }

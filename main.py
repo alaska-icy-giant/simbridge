@@ -43,10 +43,28 @@ AUTH_RATE_LIMIT = 5  # max attempts
 AUTH_RATE_WINDOW = 60  # per N seconds
 
 
+MESSAGE_LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "90"))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global SessionLocal
     SessionLocal = init_db(DB_PATH)
+
+    # Clean up old message logs on startup
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=MESSAGE_LOG_RETENTION_DAYS)
+        deleted = db.query(MessageLog).filter(MessageLog.created_at < cutoff).delete()
+        db.commit()
+        if deleted:
+            logger.info("Cleaned up %d old message log entries", deleted)
+    except Exception as e:
+        logger.error("Log cleanup failed: %s", e)
+        db.rollback()
+    finally:
+        db.close()
+
     yield
 
 
@@ -289,23 +307,33 @@ async def _relay_command(
     host_device_id: int, msg: dict, from_device_id: int, db: Session
 ) -> dict:
     """Send a command to the host via WebSocket and log it."""
-    ws = connections.get(host_device_id)
+    async with _conn_lock:
+        ws = connections.get(host_device_id)
     if not ws:
         raise HTTPException(503, "Host device is offline")
 
     req_id = msg.get("req_id") or str(uuid.uuid4())
     msg["req_id"] = req_id
 
-    log = MessageLog(
-        from_device_id=from_device_id,
-        to_device_id=host_device_id,
-        msg_type="command",
-        payload=json.dumps(msg),
-    )
-    db.add(log)
-    db.commit()
+    try:
+        log = MessageLog(
+            from_device_id=from_device_id,
+            to_device_id=host_device_id,
+            msg_type="command",
+            payload=json.dumps(msg),
+        )
+        db.add(log)
+        db.commit()
+    except Exception as e:
+        logger.error("Failed to log command: %s", e)
+        db.rollback()
 
-    await ws.send_json(msg)
+    try:
+        await ws.send_json(msg)
+    except Exception as e:
+        logger.error("Failed to send command to host %d: %s", host_device_id, e)
+        raise HTTPException(502, "Failed to deliver command to host")
+
     return {"status": "sent", "req_id": req_id}
 
 
@@ -526,20 +554,34 @@ async def ws_host(ws: WebSocket, device_id: int, token: str = Query(...)):
     try:
         device = _verify_device_ownership(device_id, user_id, "host", db)
         await ws.accept()
-        connections[device_id] = ws
-        device.is_online = True
+
+        # Reject duplicate connections for the same device (R-02)
+        async with _conn_lock:
+            old_ws = connections.get(device_id)
+            if old_ws:
+                try:
+                    await old_ws.close(1008, "Replaced by new connection")
+                except Exception:
+                    pass
+            connections[device_id] = ws
+
         device.last_seen = datetime.now(timezone.utc)
         db.commit()
 
         await ws.send_json({"type": "connected", "device_id": device_id})
         await _ws_loop(ws, device_id, "host", db)
     finally:
-        connections.pop(device_id, None)
-        device = db.query(Device).filter(Device.id == device_id).first()
-        if device:
-            device.is_online = False
-            device.last_seen = datetime.now(timezone.utc)
-            db.commit()
+        async with _conn_lock:
+            # Only remove if WE are still the registered connection
+            if connections.get(device_id) is ws:
+                connections.pop(device_id, None)
+        try:
+            device = db.query(Device).filter(Device.id == device_id).first()
+            if device:
+                device.last_seen = datetime.now(timezone.utc)
+                db.commit()
+        except Exception:
+            pass
         db.close()
 
 
@@ -550,18 +592,30 @@ async def ws_client(ws: WebSocket, device_id: int, token: str = Query(...)):
     try:
         device = _verify_device_ownership(device_id, user_id, "client", db)
         await ws.accept()
-        connections[device_id] = ws
-        device.is_online = True
+
+        async with _conn_lock:
+            old_ws = connections.get(device_id)
+            if old_ws:
+                try:
+                    await old_ws.close(1008, "Replaced by new connection")
+                except Exception:
+                    pass
+            connections[device_id] = ws
+
         device.last_seen = datetime.now(timezone.utc)
         db.commit()
 
         await ws.send_json({"type": "connected", "device_id": device_id})
         await _ws_loop(ws, device_id, "client", db)
     finally:
-        connections.pop(device_id, None)
-        device = db.query(Device).filter(Device.id == device_id).first()
-        if device:
-            device.is_online = False
-            device.last_seen = datetime.now(timezone.utc)
-            db.commit()
+        async with _conn_lock:
+            if connections.get(device_id) is ws:
+                connections.pop(device_id, None)
+        try:
+            device = db.query(Device).filter(Device.id == device_id).first()
+            if device:
+                device.last_seen = datetime.now(timezone.utc)
+                db.commit()
+        except Exception:
+            pass
         db.close()

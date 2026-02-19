@@ -46,7 +46,10 @@ class WebSocketManager(
 
     fun disconnect() {
         intentionalClose = true
-        reconnectFuture?.cancel(false)
+        synchronized(this) {
+            reconnectFuture?.cancel(false)
+            reconnectFuture = null
+        }
         webSocket?.close(1000, "User disconnect")
         webSocket = null
         onStatusChange(ConnectionStatus.DISCONNECTED)
@@ -62,17 +65,18 @@ class WebSocketManager(
         onStatusChange(ConnectionStatus.CONNECTING)
         val serverUrl = prefs.serverUrl
         val token = prefs.token
-        if (serverUrl.isBlank() || token.isBlank()) {
-            Log.w(TAG, "No server URL or token configured")
+        val deviceId = prefs.deviceId
+        if (serverUrl.isBlank() || token.isBlank() || deviceId < 0) {
+            Log.w(TAG, "No server URL, token, or device ID configured")
             onStatusChange(ConnectionStatus.DISCONNECTED)
             return
         }
 
-        // Convert http(s):// to ws(s)://
+        // Convert http(s):// to ws(s):// and use the host device endpoint
         val wsUrl = serverUrl
             .replace("https://", "wss://")
             .replace("http://", "ws://")
-            .trimEnd('/') + "/ws?token=$token"
+            .trimEnd('/') + "/ws/host/$deviceId?token=$token"
 
         Log.i(TAG, "Connecting to $wsUrl")
         val request = Request.Builder().url(wsUrl).build()
@@ -85,7 +89,9 @@ class WebSocketManager(
         val delaySec = minOf(1L shl attempt, MAX_BACKOFF_SEC)
         Log.i(TAG, "Reconnecting in ${delaySec}s (attempt ${attempt + 1})")
         onStatusChange(ConnectionStatus.CONNECTING)
-        reconnectFuture = scheduler.schedule({ doConnect() }, delaySec, TimeUnit.SECONDS)
+        synchronized(this) {
+            reconnectFuture = scheduler.schedule({ doConnect() }, delaySec, TimeUnit.SECONDS)
+        }
     }
 
     private inner class WsListener : WebSocketListener() {

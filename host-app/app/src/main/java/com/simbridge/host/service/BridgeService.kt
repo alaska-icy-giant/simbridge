@@ -6,7 +6,9 @@ import android.app.Service
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Binder
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Telephony
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -44,14 +46,16 @@ class BridgeService : Service() {
 
     private val smsReceiver = SmsReceiver()
 
-    // Observable state
-    var connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Observable state — callbacks are always invoked on main thread
+    @Volatile var connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED
         private set
     var onStatusChange: ((ConnectionStatus) -> Unit)? = null
     var onLogEntry: ((LogEntry) -> Unit)? = null
 
     private val _logs = mutableListOf<LogEntry>()
-    val logs: List<LogEntry> get() = _logs.toList()
+    val logs: List<LogEntry> get() = synchronized(_logs) { _logs.toList() }
 
     override fun onCreate() {
         super.onCreate()
@@ -125,7 +129,7 @@ class BridgeService : Service() {
 
     private fun handleStatusChange(status: ConnectionStatus) {
         connectionStatus = status
-        onStatusChange?.invoke(status)
+        mainHandler.post { onStatusChange?.invoke(status) }
 
         val text = when (status) {
             ConnectionStatus.CONNECTED -> "Connected"
@@ -151,7 +155,7 @@ class BridgeService : Service() {
                 _logs.removeAt(_logs.lastIndex)
             }
         }
-        onLogEntry?.invoke(entry)
+        mainHandler.post { onLogEntry?.invoke(entry) }
     }
 
     private fun registerSmsReceiver() {

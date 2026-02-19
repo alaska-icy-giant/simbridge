@@ -1,10 +1,15 @@
+import os
+
+# Set JWT_SECRET before importing auth/main (required since R-01 fix)
+os.environ.setdefault("JWT_SECRET", "test-secret-for-pytest")
+
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from auth import create_token
-from main import app, connections, get_db
+from main import app, connections, get_db, _auth_attempts
 from models import Base, Device, Pairing, PairingCode
 
 from datetime import datetime, timedelta, timezone
@@ -46,6 +51,7 @@ def client(db):
 
     app.dependency_overrides.clear()
     connections.clear()
+    _auth_attempts.clear()
 
 
 @pytest.fixture()

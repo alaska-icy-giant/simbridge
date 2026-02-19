@@ -46,6 +46,16 @@ class ClientSignalingHandler(
                         reqId = callReqId,
                     )
                 )
+            } else {
+                Log.e(TAG, "Failed to create SDP offer")
+                sendMessage(
+                    WsMessage(
+                        type = "webrtc",
+                        action = "error",
+                        body = "Failed to create SDP offer",
+                        reqId = callReqId,
+                    )
+                )
             }
         }
     }
@@ -73,6 +83,16 @@ class ClientSignalingHandler(
                             type = "webrtc",
                             action = "answer",
                             sdp = answer.description,
+                            reqId = message.reqId,
+                        )
+                    )
+                } else {
+                    Log.e(TAG, "Failed to create SDP answer")
+                    sendMessage(
+                        WsMessage(
+                            type = "webrtc",
+                            action = "error",
+                            body = "Failed to create SDP answer",
                             reqId = message.reqId,
                         )
                     )

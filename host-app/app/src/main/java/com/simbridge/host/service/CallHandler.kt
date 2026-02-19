@@ -113,10 +113,19 @@ class CallHandler(
                 != PackageManager.PERMISSION_GRANTED
             ) return null
 
-            val accounts = telecomManager.callCapablePhoneAccounts
             val subscriptionInfo = simInfoProvider.getSubscriptionForSlot(simSlot) ?: return null
+            val subId = subscriptionInfo.subscriptionId.toString()
+            val accounts = telecomManager.callCapablePhoneAccounts
 
-            // Match phone account by subscription ID in the component name or ID
+            // Match phone account by subscription ID embedded in the account handle ID
+            for (account in accounts) {
+                if (account.id.contains(subId)) {
+                    return account
+                }
+            }
+
+            // Fallback: try index-based if subscription ID matching fails
+            Log.w(TAG, "No PhoneAccount matched subId $subId, falling back to index")
             return accounts.getOrNull(simSlot - 1)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get phone account for slot $simSlot", e)

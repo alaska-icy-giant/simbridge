@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
@@ -67,6 +68,9 @@ class PairingCode(Base):
 
 class Pairing(Base):
     __tablename__ = "pairings"
+    __table_args__ = (
+        UniqueConstraint("host_device_id", "client_device_id", name="uq_host_client_pair"),
+    )
 
     id = Column(Integer, primary_key=True)
     host_device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)

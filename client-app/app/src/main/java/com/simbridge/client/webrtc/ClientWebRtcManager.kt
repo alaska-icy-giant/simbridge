@@ -45,6 +45,9 @@ class ClientWebRtcManager(private val context: Context) {
     fun createPeerConnection() {
         val f = factory ?: return
 
+        // Clean up any existing connection to prevent resource leaks (C-01)
+        closePeerConnection()
+
         val config = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
