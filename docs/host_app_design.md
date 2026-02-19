@@ -89,7 +89,10 @@ Synchronous OkHttp-based REST client. Called from coroutines with `Dispatchers.I
 Returns `Result<T>` for clean error handling in the UI layer.
 
 #### `Prefs.kt`
-Thin SharedPreferences wrapper storing: `serverUrl`, `token`, `deviceId`, `deviceName`. The `isLoggedIn` computed property checks both token and serverUrl are non-blank.
+Thin SharedPreferences wrapper storing: `serverUrl`, `token`, `deviceId`, `deviceName`, `biometricEnabled`. The `isLoggedIn` computed property checks both token and serverUrl are non-blank.
+
+#### `SecureTokenStore.kt`
+Uses `EncryptedSharedPreferences` (from `androidx.security.crypto`) to store the JWT token in Android Keystore-backed encrypted storage. Released only after biometric verification succeeds. Methods: `saveToken(token)`, `getToken(): String?`, `clear()`.
 
 ---
 
@@ -226,25 +229,38 @@ Single-Activity architecture with Jetpack Compose Navigation.
 #### Navigation Flow
 
 ```
-LoginScreen ──login──► DashboardScreen ──► LogScreen
+BiometricPromptScreen ──success──► DashboardScreen
+        │ (fallback)                    │
+        ▼                               ├──► LogScreen
+LoginScreen ──login──► DashboardScreen  │
+                            │           ├──► SettingsScreen
                             │                    │
-                            ├──► SettingsScreen   │
-                            │        │            │
-                            │        ▼            │
-                            │    (logout)         │
-                            │        │            │
-                            ◄────────┘            │
-                            ◄─────────────────────┘
+                            │                (logout)
+                            │                    │
+                            ◄────────────────────┘
 ```
 
-Start destination is `DASHBOARD` if already logged in, `LOGIN` otherwise.
+Start destination logic:
+- If `biometricEnabled && secureToken exists` → `BIOMETRIC`
+- Else if already logged in → `DASHBOARD`
+- Otherwise → `LOGIN`
 
 #### `LoginScreen`
 
 - Three fields: server URL, username, password
 - Password toggle visibility
-- On login success: saves token to Prefs, registers device (fire-and-forget), navigates to dashboard
+- On login success: saves token to Prefs, registers device (fire-and-forget)
+- If device supports biometric and biometric is not yet enabled: shows "Enable biometric unlock?" dialog
+- If user accepts: saves token to `SecureTokenStore`, sets `prefs.biometricEnabled = true`
+- Navigates to dashboard
 - Error display for failed login attempts
+
+#### `BiometricPromptScreen`
+
+- Shown when `prefs.biometricEnabled && SecureTokenStore.getToken() != null`
+- Uses `BiometricPrompt` from `androidx.biometric` with `BIOMETRIC_STRONG` authenticator
+- On success: retrieves token from secure storage, sets `prefs.token`, navigates to dashboard
+- On failure/cancel or "Use password" button: navigates to LoginScreen
 
 #### `DashboardScreen`
 
@@ -264,8 +280,9 @@ Start destination is `DASHBOARD` if already logged in, `LOGIN` otherwise.
 
 - Server URL display (read-only)
 - Device name and ID display
+- Biometric Unlock toggle (only visible if device supports biometric via `BiometricManager.canAuthenticate()`). Enabling saves the current token to `SecureTokenStore`; disabling clears it.
 - Battery optimization shortcut — opens Android's "ignore battery optimization" settings for the app
-- Logout button with confirmation dialog (clears Prefs, stops service, navigates to login)
+- Logout button with confirmation dialog (clears Prefs + SecureTokenStore, stops service, navigates to login)
 
 #### `Theme.kt`
 
@@ -345,6 +362,8 @@ Permissions are requested at Activity launch. The service gracefully handles mis
 | Gson | 2.11.0 | JSON serialization |
 | stream-webrtc-android | 1.2.2 | Google's libwebrtc for Android |
 | Core KTX | 1.15.0 | Kotlin extensions |
+| Biometric | 1.1.0 | Fingerprint / Face unlock |
+| Security Crypto | 1.0.0 | EncryptedSharedPreferences |
 
 ---
 

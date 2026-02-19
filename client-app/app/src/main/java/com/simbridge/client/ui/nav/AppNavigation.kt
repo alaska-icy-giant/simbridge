@@ -1,15 +1,19 @@
 package com.simbridge.client.ui.nav
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.simbridge.client.data.Prefs
+import com.simbridge.client.data.SecureTokenStore
 import com.simbridge.client.service.ClientService
 import com.simbridge.client.ui.screen.*
 
 object Routes {
     const val LOGIN = "login"
+    const val BIOMETRIC = "biometric"
     const val PAIR = "pair"
     const val DASHBOARD = "dashboard"
     const val SMS = "sms"
@@ -26,7 +30,11 @@ fun AppNavigation(
     onStartService: () -> Unit,
     onStopService: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val secureTokenStore = remember { SecureTokenStore(context) }
+
     val startDestination = when {
+        prefs.biometricEnabled && secureTokenStore.getToken() != null -> Routes.BIOMETRIC
         !prefs.isLoggedIn -> Routes.LOGIN
         !prefs.isPaired -> Routes.PAIR
         else -> Routes.DASHBOARD
@@ -38,6 +46,24 @@ fun AppNavigation(
                 val dest = if (prefs.isPaired) Routes.DASHBOARD else Routes.PAIR
                 navController.navigate(dest) { popUpTo(Routes.LOGIN) { inclusive = true } }
             })
+        }
+
+        composable(Routes.BIOMETRIC) {
+            BiometricPromptScreen(
+                prefs = prefs,
+                secureTokenStore = secureTokenStore,
+                onSuccess = {
+                    val dest = if (prefs.isPaired) Routes.DASHBOARD else Routes.PAIR
+                    navController.navigate(dest) {
+                        popUpTo(Routes.BIOMETRIC) { inclusive = true }
+                    }
+                },
+                onFallbackToLogin = {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.BIOMETRIC) { inclusive = true }
+                    }
+                },
+            )
         }
 
         composable(Routes.PAIR) {
@@ -76,6 +102,7 @@ fun AppNavigation(
             SettingsScreen(
                 prefs = prefs,
                 onLogout = {
+                    secureTokenStore.clear()
                     prefs.clear()
                     onStopService()
                     navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }

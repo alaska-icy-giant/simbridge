@@ -74,6 +74,17 @@ dependencies {
     // WebRTC
     implementation(libs.webrtc)
 
+    // Google Sign-In
+    implementation(libs.credentials)
+    implementation(libs.credentials.play.services.auth)
+    implementation(libs.googleid)
+
+    // Biometric
+    implementation("androidx.biometric:biometric:1.1.0")
+
+    // Encrypted SharedPreferences
+    implementation("androidx.security:security-crypto:1.0.0")
+
     // Unit testing — JUnit 5 + MockK
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")

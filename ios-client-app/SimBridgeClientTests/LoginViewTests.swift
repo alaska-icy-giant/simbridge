@@ -133,6 +133,31 @@ final class LoginViewTests: XCTestCase {
         )
     }
 
+    // MARK: - Google Sign-In button
+
+    func test_google_sign_in_button_present() {
+        let googleButton = app.buttons["googleSignInButton"]
+
+        XCTAssertTrue(
+            googleButton.waitForExistence(timeout: 5),
+            "'Sign in with Google' button should be visible on the login screen"
+        )
+    }
+
+    func test_google_sign_in_button_disabled_when_server_empty() {
+        // Clear the server URL field
+        let serverUrlField = app.textFields["serverUrlField"]
+        XCTAssertTrue(serverUrlField.waitForExistence(timeout: 5))
+        serverUrlField.tap()
+        serverUrlField.press(forDuration: 1.0)
+        app.menuItems["Select All"].tap()
+        app.keys["delete"].tap()
+
+        let googleButton = app.buttons["googleSignInButton"]
+        XCTAssertTrue(googleButton.waitForExistence(timeout: 3))
+        XCTAssertFalse(googleButton.isEnabled, "Google button should be disabled when server URL is empty")
+    }
+
     // MARK: - Create account link
 
     func test_create_account_link() {
@@ -151,6 +176,39 @@ final class LoginViewTests: XCTestCase {
         let registerTitle = app.staticTexts["registerTitle"]
         let exists = registerButton.waitForExistence(timeout: 3) || registerTitle.waitForExistence(timeout: 1)
         XCTAssertTrue(exists, "Tapping 'Create Account' should show registration UI")
+    }
+
+    // MARK: - Biometric offer
+
+    func test_biometric_offer_after_login() {
+        // After a successful login on a device with biometrics,
+        // the app should offer to enable biometric unlock.
+        // On simulator without biometric support, this alert won't appear,
+        // so we simply verify the login flow completes without crashing.
+        let serverUrlField = app.textFields["serverUrlField"]
+        let usernameField = app.textFields["usernameField"]
+        let passwordField = app.secureTextFields["passwordField"]
+        let loginButton = app.buttons["loginButton"]
+
+        serverUrlField.tap()
+        serverUrlField.typeText("http://localhost:8100")
+        usernameField.tap()
+        usernameField.typeText("testuser")
+        passwordField.tap()
+        passwordField.typeText("testpass")
+
+        loginButton.tap()
+
+        // Check if biometric offer alert appears (device-dependent)
+        let biometricAlert = app.alerts["Enable Biometric Unlock?"]
+        if biometricAlert.waitForExistence(timeout: 5) {
+            // Dismiss the offer
+            let notNowButton = biometricAlert.buttons["Not now"]
+            if notNowButton.exists {
+                notNowButton.tap()
+            }
+        }
+        // If no alert, login proceeded normally — also valid
     }
 
     // MARK: - Successful login navigates

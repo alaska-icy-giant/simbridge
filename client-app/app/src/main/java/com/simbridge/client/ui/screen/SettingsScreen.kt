@@ -1,18 +1,31 @@
 package com.simbridge.client.ui.screen
 
+import androidx.biometric.BiometricManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.simbridge.client.data.Prefs
+import com.simbridge.client.data.SecureTokenStore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(prefs: Prefs, onLogout: () -> Unit, onBack: () -> Unit) {
     var showDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val secureTokenStore = remember { SecureTokenStore(context) }
+    var biometricEnabled by remember { mutableStateOf(prefs.biometricEnabled) }
+
+    val canUseBiometric = remember {
+        val biometricManager = BiometricManager.from(context)
+        biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+    }
 
     Scaffold(
         topBar = {
@@ -70,6 +83,40 @@ fun SettingsScreen(prefs: Prefs, onLogout: () -> Unit, onBack: () -> Unit) {
                     } else {
                         Text("Not paired", style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            // Biometric unlock
+            if (canUseBiometric) {
+                Card(Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Biometric Unlock", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Use fingerprint or face recognition to unlock the app.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = biometricEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    secureTokenStore.saveToken(prefs.token)
+                                    prefs.biometricEnabled = true
+                                } else {
+                                    secureTokenStore.clear()
+                                    prefs.biometricEnabled = false
+                                }
+                                biometricEnabled = enabled
+                            },
+                        )
                     }
                 }
             }

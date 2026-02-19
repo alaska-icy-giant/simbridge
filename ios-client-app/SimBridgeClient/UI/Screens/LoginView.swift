@@ -2,6 +2,8 @@
 // Login screen: Server URL + username + password + login button + "Create Account" link.
 
 import SwiftUI
+import GoogleSignIn
+import LocalAuthentication
 
 struct LoginView: View {
     @EnvironmentObject private var appState: AppState
@@ -13,6 +15,14 @@ struct LoginView: View {
     @State private var showPassword: Bool = false
     @State private var isLoading: Bool = false
     @State private var errorMessage: String = ""
+    @State private var showBiometricOffer: Bool = false
+
+    private let secureTokenStore = SecureTokenStore()
+
+    private var canUseBiometric: Bool {
+        let context = LAContext()
+        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+    }
 
     private var colors: AdaptiveColors {
         AdaptiveColors(colorScheme: colorScheme)
@@ -125,11 +135,55 @@ struct LoginView: View {
                 }
                 .disabled(isLoading)
 
+                // Divider
+                HStack {
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(colors.onSurface.opacity(0.2))
+                    Text("or")
+                        .font(.footnote)
+                        .foregroundColor(colors.onSurface.opacity(0.5))
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(colors.onSurface.opacity(0.2))
+                }
+
+                // Google Sign-In
+                Button {
+                    performGoogleSignIn()
+                } label: {
+                    HStack(spacing: 8) {
+                        if isLoading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: colors.onSurface))
+                        }
+                        Text("Sign in with Google")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(colors.primary, lineWidth: 1)
+                    )
+                    .foregroundColor(colors.primary)
+                }
+                .disabled(isLoading || serverUrl.isEmpty)
+                .opacity((isLoading || serverUrl.isEmpty) ? 0.6 : 1.0)
+
                 Spacer()
             }
             .padding(SimBridgeTheme.loginPadding)
         }
         .background(colors.surface.ignoresSafeArea())
+        .alert("Enable Biometric Unlock?", isPresented: $showBiometricOffer) {
+            Button("Enable") {
+                secureTokenStore.saveToken(Prefs.token)
+                Prefs.biometricEnabled = true
+            }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("Use fingerprint or face recognition to unlock SimBridge next time.")
+        }
     }
 
     // MARK: - Actions
@@ -149,6 +203,7 @@ struct LoginView: View {
                 )
                 appState.completeLogin(token: response.token, serverUrl: trimmedUrl)
                 await ensureDeviceRegistered()
+                offerBiometricIfAvailable()
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -164,13 +219,11 @@ struct LoginView: View {
 
         Task {
             do {
-                // Register the account
                 _ = try await ApiClient.shared.register(
                     serverUrl: trimmedUrl,
                     username: username,
                     password: password
                 )
-                // Then log in
                 let loginResp = try await ApiClient.shared.login(
                     serverUrl: trimmedUrl,
                     username: username,
@@ -178,10 +231,63 @@ struct LoginView: View {
                 )
                 appState.completeLogin(token: loginResp.token, serverUrl: trimmedUrl)
                 await ensureDeviceRegistered()
+                offerBiometricIfAvailable()
             } catch {
                 errorMessage = error.localizedDescription
             }
             isLoading = false
+        }
+    }
+
+    private func performGoogleSignIn() {
+        errorMessage = ""
+        isLoading = true
+
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            errorMessage = "Unable to find root view controller"
+            isLoading = false
+            return
+        }
+
+        let trimmedUrl = serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { result, error in
+            if let error = error {
+                Task { @MainActor in
+                    self.errorMessage = error.localizedDescription
+                    self.isLoading = false
+                }
+                return
+            }
+
+            guard let idToken = result?.user.idToken?.tokenString else {
+                Task { @MainActor in
+                    self.errorMessage = "Failed to get Google ID token"
+                    self.isLoading = false
+                }
+                return
+            }
+
+            Task {
+                do {
+                    let response = try await ApiClient.shared.googleLogin(
+                        serverUrl: trimmedUrl, idToken: idToken
+                    )
+                    appState.completeLogin(token: response.token, serverUrl: trimmedUrl)
+                    await ensureDeviceRegistered()
+                    offerBiometricIfAvailable()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+                isLoading = false
+            }
+        }
+    }
+
+    private func offerBiometricIfAvailable() {
+        if canUseBiometric && !Prefs.biometricEnabled {
+            showBiometricOffer = true
         }
     }
 

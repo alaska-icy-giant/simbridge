@@ -35,7 +35,8 @@ ios-client-app/
 │   ├── Data/
 │   │   ├── Models.swift                    ← Shared Codable models
 │   │   ├── ApiClient.swift                 ← REST client (login, devices, pair, sms, call, history)
-│   │   └── Prefs.swift                     ← UserDefaults wrapper
+│   │   ├── Prefs.swift                     ← UserDefaults wrapper
+│   │   └── SecureTokenStore.swift          ← Keychain wrapper for biometric token
 │   ├── Service/
 │   │   ├── WebSocketManager.swift          ← WS connection to relay
 │   │   └── EventHandler.swift              ← Process incoming events from Host
@@ -47,13 +48,14 @@ ios-client-app/
 │   │   │   ├── SimCardView.swift           ← Remote SIM info display
 │   │   │   └── MessageBubble.swift         ← SMS conversation bubble
 │   │   └── Screens/
-│   │       ├── LoginView.swift             ← Login screen
+│   │       ├── LoginView.swift             ← Login screen + biometric offer
+│   │       ├── BiometricPromptView.swift   ← Biometric unlock screen
 │   │       ├── PairView.swift              ← Enter 6-digit pairing code
 │   │       ├── DashboardView.swift         ← Status + paired host info
 │   │       ├── ComposeView.swift           ← Compose SMS
 │   │       ├── DialerView.swift            ← Dial a phone number
 │   │       ├── HistoryView.swift           ← Message/call history
-│   │       └── SettingsView.swift          ← Server, device, logout
+│   │       └── SettingsView.swift          ← Server, device, biometric toggle, logout
 │   └── Resources/
 │       └── Assets.xcassets
 └── SimBridgeClientTests/                   ← Dave's test target
@@ -231,6 +233,12 @@ func getHistory(deviceId:limit:) async throws -> [HistoryEntry]
 Same as Host app: `serverUrl`, `token`, `deviceId`, `deviceName`, plus:
 - `pairedHostId: Int`
 - `pairedHostName: String`
+- `biometricEnabled: Bool`
+
+### SecureTokenStore.swift
+Keychain wrapper using the `Security` framework with
+`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Methods: `saveToken(_:)`,
+`getToken() -> String?`, `clear()`. Used for biometric unlock feature.
 
 ---
 

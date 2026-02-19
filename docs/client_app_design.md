@@ -76,7 +76,8 @@ client-app/
 │           ├── MainActivity.kt             # Single activity, service binding
 │           ├── data/
 │           │   ├── Models.kt               # WsMessage, SimInfo, API models, UI state
-│           │   ├── Prefs.kt                # SharedPreferences (token, deviceId, pairedHostId)
+│           │   ├── Prefs.kt                # SharedPreferences (token, deviceId, pairedHostId, biometricEnabled)
+│           │   ├── SecureTokenStore.kt     # EncryptedSharedPreferences for biometric token
 │           │   └── ApiClient.kt            # REST client (auth, devices, pair, SMS, call)
 │           ├── service/
 │           │   ├── ClientService.kt        # Foreground service — lifecycle hub
@@ -91,13 +92,14 @@ client-app/
 │               ├── theme/Theme.kt
 │               ├── nav/AppNavigation.kt    # 7 routes
 │               ├── screen/
-│               │   ├── LoginScreen.kt      # Server URL + credentials
+│               │   ├── LoginScreen.kt      # Server URL + credentials + biometric offer
+│               │   ├── BiometricPromptScreen.kt # Biometric unlock screen
 │               │   ├── PairScreen.kt       # 6-digit pairing code entry
 │               │   ├── DashboardScreen.kt  # Status, SIM info, SMS/Call buttons
 │               │   ├── SmsScreen.kt        # Compose & send SMS, message history
 │               │   ├── DialerScreen.kt     # Phone number input, call controls
 │               │   ├── LogScreen.kt        # WS event log
-│               │   └── SettingsScreen.kt   # Server/device/pairing info, logout
+│               │   └── SettingsScreen.kt   # Server/device/pairing info, biometric toggle, logout
 │               └── component/
 │                   ├── StatusCard.kt       # Connection status indicator
 │                   └── SimSelector.kt      # SIM slot picker (host's SIMs)
@@ -133,8 +135,12 @@ Extends the Host's Prefs with pairing state:
 | `deviceName` | String | Device display name |
 | `pairedHostId` | Int | Paired host's device ID |
 | `pairedHostName` | String | Paired host's display name |
+| `biometricEnabled` | Boolean | Whether biometric unlock is active |
 
 `isPaired` returns `true` when `pairedHostId >= 0`.
+
+#### `SecureTokenStore.kt`
+Uses `EncryptedSharedPreferences` (from `androidx.security.crypto`) to store the JWT token in Android Keystore-backed encrypted storage. Released only after biometric verification succeeds. Methods: `saveToken(token)`, `getToken(): String?`, `clear()`.
 
 #### `ApiClient.kt`
 
@@ -283,13 +289,18 @@ LoginScreen ──login──► PairScreen ──pair──► DashboardScreen
 ```
 
 Start destination logic:
+- Biometric enabled and secure token exists → `BiometricPromptScreen`
 - Not logged in → `LoginScreen`
 - Logged in but not paired → `PairScreen`
 - Logged in and paired → `DashboardScreen`
 
 #### `LoginScreen`
 
-Same as Host — server URL, username, password. On success: saves token, registers device as type `"client"`, navigates to Pair or Dashboard.
+Same as Host — server URL, username, password. On success: saves token, registers device as type `"client"`. If device supports biometric and biometric is not yet enabled, offers to enable biometric unlock. Navigates to Pair or Dashboard.
+
+#### `BiometricPromptScreen`
+
+Shown when `prefs.biometricEnabled && SecureTokenStore.getToken() != null`. Uses `BiometricPrompt` from `androidx.biometric`. On success: retrieves token, navigates to Pair or Dashboard. On failure/cancel: falls back to LoginScreen.
 
 #### `PairScreen`
 
@@ -327,7 +338,7 @@ Same as Host — monospace log entries with timestamp, direction (OUT=blue, IN=g
 
 #### `SettingsScreen`
 
-Shows server, device, and pairing info. Logout clears all prefs and pairing.
+Shows server, device, and pairing info. Biometric Unlock toggle (visible only on devices with biometric hardware). Logout clears all prefs, secure token storage, and pairing.
 
 ---
 
@@ -420,6 +431,8 @@ Same as Host App (shared version catalog):
 | OkHttp | 4.12.0 | WebSocket + REST |
 | Gson | 2.11.0 | JSON serialization |
 | stream-webrtc-android | 1.2.2 | WebRTC audio |
+| Biometric | 1.1.0 | Fingerprint / Face unlock |
+| Security Crypto | 1.0.0 | EncryptedSharedPreferences |
 
 ---
 

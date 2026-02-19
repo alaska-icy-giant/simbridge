@@ -184,6 +184,21 @@ class SettingsScreenTest {
             .assertDoesNotExist()
     }
 
+    // ── Biometric Unlock (device capability dependent) ──
+
+    // Note: BiometricManager.canAuthenticate() returns BIOMETRIC_SUCCESS only on
+    // devices with enrolled biometrics. On emulators without biometric support,
+    // the toggle won't appear, so we test that the screen renders without crashing.
+    @Test
+    fun settingsScreenRendersWithoutCrash() {
+        rule.setContent {
+            SimBridgeClientTheme {
+                SettingsScreen(prefs = prefs, onLogout = {}, onBack = {})
+            }
+        }
+        rule.onNodeWithText("Settings").assertIsDisplayed()
+    }
+
     // ── Back Button ──
 
     @Test

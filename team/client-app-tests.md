@@ -68,6 +68,15 @@
 | `test_ws_message_decodes`            | JSON → WsMessage with optional fields |
 | `test_connection_status_enum`        | All 3 cases exist                     |
 
+### SecureTokenStore
+
+| Test                                  | What to verify                        |
+|---------------------------------------|---------------------------------------|
+| `test_getToken_returns_nil_empty`    | No token saved returns nil            |
+| `test_saveToken_getToken_roundtrip`  | Save then get returns same value      |
+| `test_clear_removes_token`           | clear() then getToken() returns nil   |
+| `test_saveToken_overwrites`          | Second save replaces first value      |
+
 ### Prefs
 
 | Test                                  | What to verify                        |
@@ -93,6 +102,7 @@
 | `test_login_error_shown`            | Error message displays on failure     |
 | `test_create_account_link`          | "Create Account" triggers registration |
 | `test_successful_login_navigates`    | Goes to Pair or Dashboard             |
+| `test_biometric_offer_after_login`   | Biometric offer shown after login (device-dependent) |
 
 ### PairView
 
@@ -157,6 +167,7 @@
 | `test_paired_host_shown`            | Paired host name                      |
 | `test_logout_confirmation`           | Confirmation dialog on logout         |
 | `test_logout_navigates_to_login`    | Clears prefs, goes to LoginView       |
+| `test_biometric_toggle_presence`     | Toggle present on biometric-capable devices |
 
 ---
 

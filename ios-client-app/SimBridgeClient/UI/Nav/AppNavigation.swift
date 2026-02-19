@@ -6,10 +6,14 @@ import SwiftUI
 struct AppNavigation: View {
     @EnvironmentObject private var appState: AppState
 
+    private let secureTokenStore = SecureTokenStore()
+
     var body: some View {
         NavigationStack {
             Group {
-                if !appState.isLoggedIn {
+                if Prefs.biometricEnabled && secureTokenStore.getToken() != nil && !appState.isLoggedIn {
+                    BiometricPromptView()
+                } else if !appState.isLoggedIn {
                     LoginView()
                 } else if !appState.isPaired {
                     PairView()

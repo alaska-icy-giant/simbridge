@@ -10,6 +10,7 @@ import SwiftUI
 
 enum AppRoute: Hashable {
     case login
+    case biometric
     case dashboard
     case log
     case settings
@@ -21,11 +22,15 @@ struct AppNavigation: View {
 
     @State private var navigationPath = NavigationPath()
 
+    private let secureTokenStore = SecureTokenStore()
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            // Root view: either Login or Dashboard
+            // Root view: Biometric, Dashboard, or Login
             Group {
-                if prefs.isLoggedIn {
+                if prefs.biometricEnabled && secureTokenStore.getToken() != nil {
+                    biometricView
+                } else if prefs.isLoggedIn {
                     dashboardView
                 } else {
                     loginView
@@ -35,6 +40,8 @@ struct AppNavigation: View {
                 switch route {
                 case .login:
                     loginView
+                case .biometric:
+                    biometricView
                 case .dashboard:
                     dashboardView
                 case .log:
@@ -44,6 +51,7 @@ struct AppNavigation: View {
                         prefs: prefs,
                         onLogout: {
                             service.stop()
+                            secureTokenStore.clear()
                             prefs.clear()
                             // Reset navigation to root (login)
                             navigationPath = NavigationPath()
@@ -56,6 +64,22 @@ struct AppNavigation: View {
     }
 
     // MARK: - View Builders
+
+    private var biometricView: some View {
+        BiometricPromptView(
+            prefs: prefs,
+            secureTokenStore: secureTokenStore,
+            onSuccess: {
+                navigationPath = NavigationPath()
+            },
+            onFallbackToLogin: {
+                navigationPath = NavigationPath()
+                // Force re-render to show login
+                prefs.token = ""
+                prefs.biometricEnabled = false
+            }
+        )
+    }
 
     private var loginView: some View {
         LoginView(prefs: prefs) {

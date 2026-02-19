@@ -129,8 +129,12 @@ Use platform-native filled icon sets. Map icons consistently:
 
 ### Settings Screen
 - Info cards for server URL, device name/ID
+- Biometric Unlock toggle row (only visible if device supports biometric)
+  - Switch/Toggle to enable or disable
+  - Enabling saves JWT to platform-secure storage (Android Keystore / iOS Keychain)
+  - Disabling clears the secure storage
 - Battery optimization row (Android) / Background App Refresh (iOS)
-- Destructive logout button with confirmation alert
+- Destructive logout button with confirmation alert (also clears biometric state)
 
 ---
 
@@ -139,14 +143,18 @@ Use platform-native filled icon sets. Map icons consistently:
 Both apps share the same navigation graph:
 
 ```
+BIOMETRIC ──(success)──► DASHBOARD
+    │ (fallback)            ├──► LOG
+    ▼                       └──► SETTINGS ──(logout)──► LOGIN
 LOGIN ──(success)──► DASHBOARD
-                        ├──► LOG
-                        └──► SETTINGS ──(logout)──► LOGIN
 ```
 
-- If `token` exists in local storage, start at DASHBOARD
+- If `biometricEnabled` and secure token exists, start at BIOMETRIC
+- Else if `token` exists in local storage, start at DASHBOARD
 - Otherwise start at LOGIN
-- Logout clears storage and resets to LOGIN
+- Biometric success retrieves token from secure storage → DASHBOARD
+- Biometric failure/cancel falls back to LOGIN
+- Logout clears storage (including secure biometric storage) and resets to LOGIN
 
 ---
 

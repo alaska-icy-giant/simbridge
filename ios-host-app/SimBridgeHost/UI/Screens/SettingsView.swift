@@ -8,6 +8,7 @@
 // Destructive logout button with confirmation alert.
 
 import SwiftUI
+import LocalAuthentication
 
 struct SettingsView: View {
     @ObservedObject var prefs: Prefs
@@ -17,6 +18,14 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var showLogoutAlert = false
+    @State private var biometricEnabled: Bool = false
+
+    private let secureTokenStore = SecureTokenStore()
+
+    private var canUseBiometric: Bool {
+        let context = LAContext()
+        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+    }
 
     var body: some View {
         ScrollView {
@@ -54,6 +63,26 @@ struct SettingsView: View {
                     }
                     .font(.body)
                     .padding(.top, 4)
+                }
+
+                // Biometric Unlock
+                if canUseBiometric {
+                    InfoCard(title: "Biometric Unlock", colors: colors) {
+                        Toggle(isOn: $biometricEnabled) {
+                            Text("Use fingerprint or face recognition to unlock the app.")
+                                .font(.body)
+                                .foregroundColor(colors.onSurfaceVariant)
+                        }
+                        .onChange(of: biometricEnabled) { enabled in
+                            if enabled {
+                                secureTokenStore.saveToken(prefs.token)
+                                prefs.biometricEnabled = true
+                            } else {
+                                secureTokenStore.clear()
+                                prefs.biometricEnabled = false
+                            }
+                        }
+                    }
                 }
 
                 // iOS Limitations card
@@ -101,6 +130,9 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            biometricEnabled = prefs.biometricEnabled
+        }
         .alert("Logout", isPresented: $showLogoutAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Logout", role: .destructive) {

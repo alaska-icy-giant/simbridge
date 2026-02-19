@@ -5,7 +5,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -211,6 +213,106 @@ class SettingsScreenTest {
         composeTestRule.onNodeWithText("This will stop the bridge service and clear your credentials.")
             .assertIsDisplayed()
         composeTestRule.onNodeWithText("Cancel").assertIsDisplayed()
+    }
+
+    // ── Biometric toggle tests ──
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun TestSettingsScreenWithBiometric(
+        serverUrl: String = "https://relay.example.com",
+        deviceName: String = "Google Pixel 8",
+        deviceId: Int = 42,
+        biometricAvailable: Boolean = true,
+        biometricEnabled: Boolean = false,
+        onLogout: () -> Unit = {},
+        onBack: () -> Unit = {},
+    ) {
+        var showLogoutDialog by remember { mutableStateOf(false) }
+        var biometricOn by remember { mutableStateOf(biometricEnabled) }
+
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Settings") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
+            }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                // Server info
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Server", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(4.dp))
+                        Text(text = serverUrl.ifBlank { "Not configured" })
+                    }
+                }
+
+                // Biometric unlock
+                if (biometricAvailable) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Biometric Unlock", style = MaterialTheme.typography.titleMedium)
+                            }
+                            Switch(
+                                checked = biometricOn,
+                                onCheckedChange = { biometricOn = it },
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                Button(
+                    onClick = { showLogoutDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text("Logout")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun biometricToggleVisibleWhenDeviceSupports() {
+        composeTestRule.setContent {
+            SimBridgeTheme {
+                TestSettingsScreenWithBiometric(biometricAvailable = true)
+            }
+        }
+
+        composeTestRule.onNodeWithText("Biometric Unlock").assertIsDisplayed()
+    }
+
+    @Test
+    fun biometricToggleHiddenWhenDeviceDoesNotSupport() {
+        composeTestRule.setContent {
+            SimBridgeTheme {
+                TestSettingsScreenWithBiometric(biometricAvailable = false)
+            }
+        }
+
+        composeTestRule.onNodeWithText("Biometric Unlock").assertDoesNotExist()
     }
 
     @Test

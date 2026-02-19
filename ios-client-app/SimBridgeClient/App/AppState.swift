@@ -141,6 +141,7 @@ final class AppState: ObservableObject {
 
     func logout() {
         disconnectWebSocket()
+        SecureTokenStore().clear()
         Prefs.clear()
         isLoggedIn = false
         isPaired = false

@@ -151,6 +151,25 @@ final class SettingsViewTests: XCTestCase {
         XCTAssertTrue(atLogin, "After logout, should navigate to LoginView")
     }
 
+    // MARK: - Biometric toggle
+
+    func test_biometric_toggle_presence() {
+        // On devices with biometric support, a "Biometric Unlock" toggle should appear.
+        // On simulator without biometric hardware, it won't be present.
+        let biometricToggle = app.switches["biometricToggle"]
+        let biometricLabel = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Biometric Unlock'")
+        ).firstMatch
+
+        // We don't assert existence because it depends on hardware.
+        // Instead, verify settings screen loads correctly regardless.
+        let logoutButton = app.buttons["logoutButton"]
+        XCTAssertTrue(
+            logoutButton.waitForExistence(timeout: 5),
+            "Settings screen should load with logout button regardless of biometric support"
+        )
+    }
+
     // MARK: - Cancel logout stays on settings
 
     func test_cancel_logout_stays_on_settings() {

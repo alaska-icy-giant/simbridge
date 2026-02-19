@@ -2,12 +2,21 @@
 // Server info + device info + paired host info + logout with confirmation.
 
 import SwiftUI
+import LocalAuthentication
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var showLogoutConfirmation: Bool = false
+    @State private var biometricEnabled: Bool = Prefs.biometricEnabled
+
+    private let secureTokenStore = SecureTokenStore()
+
+    private var canUseBiometric: Bool {
+        let context = LAContext()
+        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+    }
 
     private var colors: AdaptiveColors {
         AdaptiveColors(colorScheme: colorScheme)
@@ -38,6 +47,26 @@ struct SettingsView: View {
                     )
                     infoRow(label: "Host ID", value: "\(appState.pairedHostId)")
                     infoRow(label: "Online", value: appState.isHostOnline ? "Yes" : "No")
+                }
+
+                // Biometric Unlock
+                if canUseBiometric {
+                    settingsCard(title: "Biometric Unlock") {
+                        Toggle(isOn: $biometricEnabled) {
+                            Text("Use fingerprint or face recognition to unlock the app.")
+                                .font(.body)
+                                .foregroundColor(colors.onSurface.opacity(0.6))
+                        }
+                        .onChange(of: biometricEnabled) { enabled in
+                            if enabled {
+                                secureTokenStore.saveToken(Prefs.token)
+                                Prefs.biometricEnabled = true
+                            } else {
+                                secureTokenStore.clear()
+                                Prefs.biometricEnabled = false
+                            }
+                        }
+                    }
                 }
 
                 // Background App Refresh

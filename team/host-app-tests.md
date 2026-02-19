@@ -84,6 +84,15 @@ Three layers of testing, each with its own tooling:
 | `test_log_entries_capped_at_100`    | 101st entry evicts the oldest           |
 | `test_status_callback_fires`        | onStatusChange called on state change   |
 
+### SecureTokenStore
+
+| Test                                | What to verify                          |
+|-------------------------------------|-----------------------------------------|
+| `test_getToken_returns_null_empty`  | No token saved returns null/nil         |
+| `test_saveToken_getToken_roundtrip` | Save then get returns same value        |
+| `test_clear_removes_token`          | clear() then getToken() returns null    |
+| `test_saveToken_overwrites`         | Second save replaces first value        |
+
 ### Models
 
 | Test                                | What to verify                          |
@@ -142,6 +151,8 @@ Three layers of testing, each with its own tooling:
 |-------------------------------------|-----------------------------------------|
 | `test_server_url_displayed`         | Shows current server URL                |
 | `test_device_info_displayed`        | Shows device name and ID                |
+| `test_biometric_toggle_visible`     | Toggle shown when device supports biometric |
+| `test_biometric_toggle_hidden`      | Toggle hidden when device lacks biometric |
 | `test_logout_confirmation`          | Logout button shows confirmation dialog |
 | `test_logout_clears_and_navigates`  | Confirmed logout clears prefs → Login   |
 

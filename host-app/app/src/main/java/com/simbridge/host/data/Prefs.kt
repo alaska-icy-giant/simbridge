@@ -27,6 +27,10 @@ class Prefs(context: Context) {
     val isLoggedIn: Boolean
         get() = token.isNotBlank() && serverUrl.isNotBlank()
 
+    var biometricEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, value).apply()
+
     fun clear() {
         prefs.edit().clear().apply()
     }
@@ -36,5 +40,6 @@ class Prefs(context: Context) {
         private const val KEY_TOKEN = "token"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_DEVICE_NAME = "device_name"
+        private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"
     }
 }

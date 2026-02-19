@@ -25,7 +25,8 @@ ios-host-app/
 │   ├── Data/
 │   │   ├── Models.swift                    ← ↔ data/Models.kt
 │   │   ├── ApiClient.swift                 ← ↔ data/ApiClient.kt
-│   │   └── Prefs.swift                     ← ↔ data/Prefs.kt (UserDefaults)
+│   │   ├── Prefs.swift                     ← ↔ data/Prefs.kt (UserDefaults)
+│   │   └── SecureTokenStore.swift          ← ↔ data/SecureTokenStore.kt (Keychain)
 │   ├── Service/
 │   │   ├── BridgeService.swift             ← ↔ service/BridgeService.kt
 │   │   ├── WebSocketManager.swift          ← ↔ service/WebSocketManager.kt
@@ -48,6 +49,7 @@ ios-host-app/
 │   │   │   └── SimCardView.swift           ← ↔ ui/component/SimCard.kt
 │   │   └── Screens/
 │   │       ├── LoginView.swift             ← ↔ ui/screen/LoginScreen.kt
+│   │       ├── BiometricPromptView.swift   ← ↔ ui/screen/BiometricPromptScreen.kt
 │   │       ├── DashboardView.swift         ← ↔ ui/screen/DashboardScreen.kt
 │   │       ├── LogView.swift               ← ↔ ui/screen/LogScreen.kt
 │   │       └── SettingsView.swift          ← ↔ ui/screen/SettingsScreen.kt
@@ -97,8 +99,12 @@ the Swift property name (e.g. `req_id` → `reqId`, `from_device_id` →
 Set `Authorization: Bearer <token>` header. Timeout: 15 seconds.
 
 **Prefs.swift** — Wrap `UserDefaults` with computed properties for
-`serverUrl`, `token`, `deviceId`, `deviceName`. Add `var isLoggedIn: Bool`.
+`serverUrl`, `token`, `deviceId`, `deviceName`, `biometricEnabled`. Add `var isLoggedIn: Bool`.
 Add `func clear()`.
+
+**SecureTokenStore.swift** — Keychain wrapper using the `Security` framework with
+`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Methods: `saveToken(_:)`,
+`getToken() -> String?`, `clear()`. Used for biometric unlock feature.
 
 ### Service Layer
 
@@ -158,10 +164,11 @@ Follow [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) exactly. Use SwiftUI with
 `NavigationStack`. Implement these views matching the Android screens
 pixel-for-pixel in layout (adapting to iOS idioms like navigation bars):
 
-- **LoginView** — Server URL + username + password + login button + spinner
+- **LoginView** — Server URL + username + password + login button + spinner + biometric offer after login
+- **BiometricPromptView** — Face ID / Touch ID prompt using `LAContext`, falls back to login
 - **DashboardView** — StatusCard + start/stop button + SIM list
 - **LogView** — Scrollable log entries, monospace, color-coded direction
-- **SettingsView** — Server info + device info + battery/background + logout
+- **SettingsView** — Server info + device info + biometric toggle + battery/background + logout
 
 ### Theme
 

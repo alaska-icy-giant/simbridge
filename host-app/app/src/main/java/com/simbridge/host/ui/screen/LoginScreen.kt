@@ -1,6 +1,8 @@
 package com.simbridge.host.ui.screen
 
 import android.os.Build
+import android.util.Log
+import androidx.biometric.BiometricManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -10,12 +12,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.simbridge.host.data.ApiClient
 import com.simbridge.host.data.Prefs
+import com.simbridge.host.data.SecureTokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,9 +40,18 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showBiometricOffer by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val apiClient = remember { ApiClient(prefs) }
+    val secureTokenStore = remember { SecureTokenStore(context) }
+
+    val canUseBiometric = remember {
+        val biometricManager = BiometricManager.from(context)
+        biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+    }
 
     Scaffold(
         topBar = {
@@ -135,7 +152,11 @@ fun LoginScreen(
                                 )
 
                                 isLoading = false
-                                onLoginSuccess()
+                                if (canUseBiometric && !prefs.biometricEnabled) {
+                                    showBiometricOffer = true
+                                } else {
+                                    onLoginSuccess()
+                                }
                             },
                             onFailure = { e ->
                                 isLoading = false
@@ -158,6 +179,127 @@ fun LoginScreen(
                 }
                 Text("Login")
             }
+
+            // Divider
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                HorizontalDivider(modifier = Modifier.weight(1f))
+                Text(
+                    text = "  or  ",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(16.dp))
+
+            // Google Sign-In button
+            OutlinedButton(
+                onClick = {
+                    isLoading = true
+                    error = null
+                    scope.launch {
+                        try {
+                            val credentialManager = CredentialManager.create(context)
+                            val googleIdOption = GetGoogleIdOption.Builder()
+                                .setFilterByAuthorizedAccounts(false)
+                                .setServerClientId(
+                                    context.getString(
+                                        context.resources.getIdentifier(
+                                            "google_client_id", "string", context.packageName
+                                        )
+                                    )
+                                )
+                                .build()
+                            val request = GetCredentialRequest.Builder()
+                                .addCredentialOption(googleIdOption)
+                                .build()
+                            val result = withContext(Dispatchers.IO) {
+                                credentialManager.getCredential(context, request)
+                            }
+                            val googleIdTokenCredential = GoogleIdTokenCredential
+                                .createFrom(result.credential.data)
+                            val idToken = googleIdTokenCredential.idToken
+
+                            val loginResult = withContext(Dispatchers.IO) {
+                                apiClient.googleLogin(serverUrl.trimEnd('/'), idToken)
+                            }
+                            loginResult.fold(
+                                onSuccess = { response ->
+                                    prefs.serverUrl = serverUrl.trimEnd('/')
+                                    prefs.token = response.token
+
+                                    val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+                                    val deviceResult = withContext(Dispatchers.IO) {
+                                        apiClient.registerDevice(deviceName)
+                                    }
+                                    deviceResult.onSuccess { device ->
+                                        prefs.deviceId = device.id
+                                        prefs.deviceName = device.name
+                                    }
+                                    isLoading = false
+                                    if (canUseBiometric && !prefs.biometricEnabled) {
+                                        showBiometricOffer = true
+                                    } else {
+                                        onLoginSuccess()
+                                    }
+                                },
+                                onFailure = { e ->
+                                    isLoading = false
+                                    error = e.message ?: "Google login failed"
+                                }
+                            )
+                        } catch (e: Exception) {
+                            isLoading = false
+                            error = e.message ?: "Google Sign-In failed"
+                            Log.e("LoginScreen", "Google Sign-In failed", e)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading && serverUrl.isNotBlank(),
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text("Sign in with Google")
+            }
         }
+    }
+
+    if (showBiometricOffer) {
+        AlertDialog(
+            onDismissRequest = {
+                showBiometricOffer = false
+                onLoginSuccess()
+            },
+            title = { Text("Enable Biometric Unlock?") },
+            text = { Text("Use fingerprint or face recognition to unlock SimBridge next time.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    secureTokenStore.saveToken(prefs.token)
+                    prefs.biometricEnabled = true
+                    showBiometricOffer = false
+                    onLoginSuccess()
+                }) {
+                    Text("Enable")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showBiometricOffer = false
+                    onLoginSuccess()
+                }) {
+                    Text("Not now")
+                }
+            },
+        )
     }
 }

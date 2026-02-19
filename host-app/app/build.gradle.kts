@@ -74,4 +74,15 @@ dependencies {
 
     // WebRTC
     implementation(libs.webrtc)
+
+    // Google Sign-In
+    implementation(libs.credentials)
+    implementation(libs.credentials.play.services.auth)
+    implementation(libs.googleid)
+
+    // Biometric
+    implementation("androidx.biometric:biometric:1.1.0")
+
+    // Encrypted SharedPreferences
+    implementation("androidx.security:security-crypto:1.0.0")
 }

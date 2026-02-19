@@ -18,6 +18,7 @@ enum Prefs {
         case pairedHostName
         case isLoggedIn
         case isPaired
+        case biometricEnabled
     }
 
     // MARK: - Server
@@ -66,6 +67,13 @@ enum Prefs {
     static var isPaired: Bool {
         get { defaults.bool(forKey: Key.isPaired.rawValue) }
         set { defaults.set(newValue, forKey: Key.isPaired.rawValue) }
+    }
+
+    // MARK: - Biometric
+
+    static var biometricEnabled: Bool {
+        get { defaults.bool(forKey: Key.biometricEnabled.rawValue) }
+        set { defaults.set(newValue, forKey: Key.biometricEnabled.rawValue) }
     }
 
     // MARK: - Clear All

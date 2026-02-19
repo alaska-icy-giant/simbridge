@@ -95,6 +95,22 @@ Print it out or copy it into your test tracker. Check off each item as you verif
 - [ ] Accessing protected screens without login redirects to login
 - [ ] Token expiry after 24h forces re-login (if feasible to test)
 
+### Biometric Unlock
+- [ ] After first login, biometric offer dialog appears (on devices with fingerprint/Face ID enrolled)
+- [ ] Accepting biometric offer saves token securely and enables biometric
+- [ ] Declining biometric offer ("Not now") proceeds to dashboard normally
+- [ ] On next app launch, biometric prompt appears instead of login screen
+- [ ] Biometric success unlocks the app and navigates to dashboard
+- [ ] Biometric failure shows error message, allows retry
+- [ ] Cancelling biometric / tapping "Use password" falls back to login screen
+- [ ] Settings screen shows "Biometric Unlock" toggle (only on capable devices)
+- [ ] Toggling biometric off in settings clears secure storage
+- [ ] Toggling biometric on in settings saves current token to secure storage
+- [ ] Logout clears biometric state and secure storage
+- [ ] After logout + re-login, biometric offer appears again
+- [ ] On devices without biometric hardware, no biometric UI appears anywhere
+- [ ] Biometric toggle is not visible on devices without biometric support
+
 ### Registration
 - [ ] Register with duplicate username shows error
 - [ ] Register with empty username/password is rejected

@@ -15,6 +15,7 @@ final class Prefs: ObservableObject {
         static let token = "token"
         static let deviceId = "device_id"
         static let deviceName = "device_name"
+        static let biometricEnabled = "biometric_enabled"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -58,6 +59,14 @@ final class Prefs: ObservableObject {
         }
     }
 
+    var biometricEnabled: Bool {
+        get { defaults.bool(forKey: Keys.biometricEnabled) }
+        set {
+            defaults.set(newValue, forKey: Keys.biometricEnabled)
+            objectWillChange.send()
+        }
+    }
+
     var isLoggedIn: Bool {
         !token.isEmpty && !serverUrl.isEmpty
     }
@@ -67,6 +76,7 @@ final class Prefs: ObservableObject {
         defaults.removeObject(forKey: Keys.token)
         defaults.removeObject(forKey: Keys.deviceId)
         defaults.removeObject(forKey: Keys.deviceName)
+        defaults.removeObject(forKey: Keys.biometricEnabled)
         objectWillChange.send()
     }
 }

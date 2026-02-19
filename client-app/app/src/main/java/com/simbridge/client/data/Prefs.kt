@@ -38,6 +38,10 @@ class Prefs(context: Context) {
     val isPaired: Boolean
         get() = pairedHostId >= 0
 
+    var biometricEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, value).apply()
+
     fun clear() {
         prefs.edit().clear().apply()
     }
@@ -49,5 +53,6 @@ class Prefs(context: Context) {
         private const val KEY_DEVICE_NAME = "device_name"
         private const val KEY_PAIRED_HOST_ID = "paired_host_id"
         private const val KEY_PAIRED_HOST_NAME = "paired_host_name"
+        private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"
     }
 }
