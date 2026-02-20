@@ -8,7 +8,7 @@ Instructions for building and testing the SimBridge Host App and Client App.
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| **JDK** | 17+ | Kotlin/Android compilation (JDK 17, 21, or 25 all work) |
+| **JDK** | **21 (recommended)** | Kotlin/Android compilation — only version where everything works |
 | **Android SDK** | Platform 35 | Target SDK for both apps |
 | **Android Build Tools** | 35.0.0 | APK packaging |
 
@@ -19,9 +19,21 @@ Instructions for building and testing the SimBridge Host App and Client App.
 | **Android Studio** | Ladybug 2024.2+ | IDE with integrated emulator |
 | **Android Emulator** | API 34+ | Running instrumented (UI) tests |
 
-### Known Limitations
+### Java Version Compatibility
 
-- **AGP lint + Java 25**: Android Gradle Plugin 8.7.3 lint crashes on Java 25 with error `25`. Lint is disabled for release builds via `checkReleaseBuilds = false`. Use JDK 17 or 21 if you need lint analysis.
+**JDK 21 is recommended.** It is the current LTS release and the only version where all tasks work:
+
+| Task | Java 17 | Java 21 (recommended) | Java 25 |
+|------|---------|----------------------|---------|
+| Debug build | Works | Works | Works |
+| Release build | Works | Works | Works |
+| Unit tests | Works | Works | Works* |
+| Lint | Works | Works | **Crashes** |
+| Instrumented tests | Works | Works | Works |
+
+\* Java 25 requires `net.bytebuddy.experimental=true` (already configured in `build.gradle.kts`).
+
+To install JDK 21 via sdkman: `sdk install java 21-tem && sdk use java 21-tem`
 
 ---
 
@@ -36,10 +48,10 @@ Instructions for building and testing the SimBridge Host App and Client App.
 ### Option B: Command Line
 
 ```bash
-# 1. Install JDK 17+ (if not already installed)
-#    macOS: brew install openjdk@17
-#    Ubuntu: sudo apt install openjdk-17-jdk
-#    Or use sdkman: sdk install java 17.0.13-tem
+# 1. Install JDK 21 (recommended)
+#    macOS: brew install openjdk@21
+#    Ubuntu: sudo apt install openjdk-21-jdk
+#    Or use sdkman: sdk install java 21-tem && sdk default java 21-tem
 
 # 2. Install Android SDK command-line tools
 mkdir -p ~/android-sdk/cmdline-tools
@@ -108,7 +120,7 @@ cd client-app
 Run JVM-based unit tests (no device/emulator needed):
 
 ```bash
-# Host App (85 tests; 6 pre-existing SmsHandlerTest failures)
+# Host App (85 tests, all pass)
 cd host-app
 ./gradlew :app:testDebugUnitTest
 
@@ -153,7 +165,10 @@ Instrumented tests include:
 ### Lint
 
 ```bash
-# Requires JDK 17 or 21 (crashes on Java 25)
+# Requires JDK 21 or 17 (crashes on Java 25)
+# If using Java 25, override JAVA_HOME for lint only:
+#   JAVA_HOME=~/.sdkman/candidates/java/21-tem ./gradlew :app:lint
+
 cd host-app
 ./gradlew :app:lint
 
