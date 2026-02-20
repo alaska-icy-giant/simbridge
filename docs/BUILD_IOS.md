@@ -280,3 +280,77 @@ GitHub Actions workflow is in `.github/workflows/ios.yml`:
 - Runs unit tests with `CODE_SIGNING_ALLOWED=NO`
 - Uploads `.xcresult` bundles as artifacts
 - Triggers only on changes to `ios-host-app/` or `ios-client-app/`
+
+### Firebase App Distribution (optional)
+
+On pushes to `master`, the workflow can sign, archive, and distribute IPAs to testers via Firebase App Distribution. **This is optional** — without the Apple signing secrets, these steps are automatically skipped and CI still runs builds and tests normally.
+
+#### Prerequisites
+
+- **Apple Developer Account** ($99/year) — required for code signing
+- **Firebase project** with both iOS apps registered
+
+#### Setup steps
+
+1. **Export a distribution certificate (.p12)**
+   - Open Keychain Access on your Mac
+   - Apple Developer Portal → Certificates → create/download an **Apple Distribution** certificate
+   - In Keychain Access, right-click the certificate → Export → save as `.p12`, set a password
+
+2. **Create Ad Hoc provisioning profiles**
+   - Apple Developer Portal → Profiles → New → **Ad Hoc**
+   - Create one for the host app bundle ID, one for the client app bundle ID
+   - Add your test devices by UDID
+   - Download both `.mobileprovision` files
+
+3. **Create `ExportOptions.plist` files** (commit to repo)
+
+   `ios-host-app/ExportOptions.plist`:
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+     "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+       <key>method</key>
+       <string>ad-hoc</string>
+       <key>teamID</key>
+       <string>YOUR_TEAM_ID</string>
+   </dict>
+   </plist>
+   ```
+
+   Create the same file at `ios-client-app/ExportOptions.plist`.
+
+4. **Add GitHub Actions secrets**
+
+   Encode the certificate and profiles:
+   ```bash
+   base64 -i Certificates.p12 | pbcopy                        # → IOS_P12_BASE64
+   base64 -i SimBridgeHost_AdHoc.mobileprovision | pbcopy      # → IOS_HOST_PROVISION_PROFILE_BASE64
+   base64 -i SimBridgeClient_AdHoc.mobileprovision | pbcopy    # → IOS_CLIENT_PROVISION_PROFILE_BASE64
+   ```
+
+   Go to repo Settings → Secrets and variables → Actions → add:
+
+   | Secret | Description |
+   |---|---|
+   | `IOS_P12_BASE64` | Base64-encoded `.p12` distribution certificate |
+   | `IOS_P12_PASSWORD` | Password for the `.p12` file |
+   | `IOS_HOST_PROVISION_PROFILE_BASE64` | Base64-encoded Ad Hoc profile for host app |
+   | `IOS_CLIENT_PROVISION_PROFILE_BASE64` | Base64-encoded Ad Hoc profile for client app |
+   | `FIREBASE_IOS_HOST_APP_ID` | Firebase App ID for iOS host app (e.g. `1:123456:ios:aaa`) |
+   | `FIREBASE_IOS_CLIENT_APP_ID` | Firebase App ID for iOS client app |
+   | `FIREBASE_SERVICE_ACCOUNT` | Firebase service account JSON (shared with Android) |
+
+   > **Note**: `FIREBASE_SERVICE_ACCOUNT` is per-project, not per-app. If you already set it for Android distribution, reuse the same secret.
+
+#### Without an Apple Developer account
+
+If the 4 Apple signing secrets (`IOS_P12_BASE64`, `IOS_P12_PASSWORD`, `IOS_HOST_PROVISION_PROFILE_BASE64`, `IOS_CLIENT_PROVISION_PROFILE_BASE64`) are not configured, all signing and distribution steps are **automatically skipped**. CI will still:
+
+- Build both apps for simulator
+- Run unit tests
+- Upload test results
+
+No changes to the workflow are needed — just add the secrets when you're ready.
