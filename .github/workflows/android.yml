@@ -79,7 +79,7 @@ jobs:
         if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
-          appId: ${{ secrets.FIREBASE_HOST_APP_ID }}
+          appId: ${{ secrets.FIREBASE_ANDROID_HOST_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           groups: testers
           file: host-app/app/build/outputs/apk/debug/app-debug.apk
@@ -149,7 +149,7 @@ jobs:
         if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
-          appId: ${{ secrets.FIREBASE_CLIENT_APP_ID }}
+          appId: ${{ secrets.FIREBASE_ANDROID_CLIENT_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           groups: testers
           file: client-app/app/build/outputs/apk/debug/app-debug.apk
