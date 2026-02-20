@@ -48,6 +48,16 @@ jobs:
             -Xswiftc -target -Xswiftc "arm64-apple-ios16.0-simulator" \
             2>&1 || echo "::warning::Swift build had warnings or errors (expected for UIKit/CallKit dependencies without full Xcode project)"
 
+      - name: Build for simulator
+        working-directory: ios-host-app
+        run: |
+          xcodebuild build \
+            -scheme SimBridgeHost \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | xcbeautify || true
+
       - name: Run unit tests
         working-directory: ios-host-app
         run: |
@@ -57,6 +67,12 @@ jobs:
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | xcbeautify || true
+
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-host-app-simulator
+          path: ios-host-app/DerivedData/Build/Products/Debug-iphonesimulator/*.app
 
       - name: Upload test results
         if: always()
@@ -84,12 +100,13 @@ jobs:
           key: spm-client-${{ runner.os }}-${{ hashFiles('ios-client-app/Package.swift') }}
           restore-keys: spm-client-${{ runner.os }}-
 
-      - name: Build
+      - name: Build for simulator
         working-directory: ios-client-app
         run: |
           xcodebuild build \
             -scheme SimBridgeClient \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | xcbeautify || true
 
@@ -102,6 +119,12 @@ jobs:
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | xcbeautify || true
+
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-client-app-simulator
+          path: ios-client-app/DerivedData/Build/Products/Debug-iphonesimulator/*.app
 
       - name: Upload test results
         if: always()

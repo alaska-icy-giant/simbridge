@@ -69,6 +69,12 @@ jobs:
           name: host-unit-test-results
           path: host-app/app/build/reports/tests/testDebugUnitTest/
 
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-app-debug-apk
+          path: host-app/app/build/outputs/apk/debug/app-debug.apk
+
   client-app:
     name: Client App
     runs-on: ubuntu-latest
@@ -120,6 +126,12 @@ jobs:
         with:
           name: client-unit-test-results
           path: client-app/app/build/reports/tests/testDebugUnitTest/
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-app-debug-apk
+          path: client-app/app/build/outputs/apk/debug/app-debug.apk
 
   android-instrumented:
     name: Instrumented Tests
