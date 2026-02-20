@@ -3,6 +3,7 @@ package com.simbridge.client.webrtc
 import android.content.Context
 import android.util.Log
 import org.webrtc.*
+import org.webrtc.audio.JavaAudioDeviceModule
 
 /**
  * Client-side WebRTC manager. Receives call audio from the Host

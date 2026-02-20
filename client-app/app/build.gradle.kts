@@ -40,6 +40,11 @@ android {
         compose = true
     }
 
+    lint {
+        // AGP lint crashes on Java 25; disable fatal lint for release builds
+        checkReleaseBuilds = false
+    }
+
     @Suppress("UnstableApiUsage")
     testOptions {
         unitTests.isIncludeAndroidResources = true

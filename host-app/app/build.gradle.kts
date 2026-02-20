@@ -41,6 +41,11 @@ android {
     buildFeatures {
         compose = true
     }
+
+    lint {
+        // AGP lint crashes on Java 25; disable fatal lint for release builds
+        checkReleaseBuilds = false
+    }
 }
 
 dependencies {

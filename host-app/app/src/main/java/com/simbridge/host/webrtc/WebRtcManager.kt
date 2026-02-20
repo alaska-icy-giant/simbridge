@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.util.Log
 import org.webrtc.*
+import org.webrtc.audio.JavaAudioDeviceModule
 
 /**
  * Manages the WebRTC PeerConnection lifecycle for call audio bridging.
