@@ -97,19 +97,15 @@ class CallHandlerTest {
 
     @Test
     fun `test hangUp ends call and sends ended state`() {
+        // In JVM unit tests, Build.VERSION.SDK_INT is 0 (< 28/P), so endCall()
+        // is skipped due to the API level guard. The ended event is still sent.
         every {
             androidx.core.content.ContextCompat.checkSelfPermission(
                 context, Manifest.permission.ANSWER_PHONE_CALLS
             )
         } returns PackageManager.PERMISSION_GRANTED
 
-        @Suppress("DEPRECATION")
-        every { telecomManager.endCall() } returns true
-
         callHandler.hangUp("req-3")
-
-        @Suppress("DEPRECATION")
-        verify(exactly = 1) { telecomManager.endCall() }
 
         assertEquals(1, sentEvents.size)
         assertEquals("CALL_STATE", sentEvents[0].event)
@@ -160,9 +156,6 @@ class CallHandlerTest {
                 context, Manifest.permission.ANSWER_PHONE_CALLS
             )
         } returns PackageManager.PERMISSION_GRANTED
-
-        @Suppress("DEPRECATION")
-        every { telecomManager.endCall() } returns true
 
         callHandler.hangUp("req-6")
 

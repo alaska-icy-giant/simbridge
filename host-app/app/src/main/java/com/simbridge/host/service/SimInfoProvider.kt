@@ -1,6 +1,7 @@
 package com.simbridge.host.service
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -70,6 +71,7 @@ class SimInfoProvider(private val context: Context) {
     }
 
     @Suppress("DEPRECATION")
+    @SuppressLint("MissingPermission")
     private fun getPhoneNumber(info: SubscriptionInfo): String? {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

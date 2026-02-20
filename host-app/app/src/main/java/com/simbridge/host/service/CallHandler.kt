@@ -3,6 +3,7 @@ package com.simbridge.host.service
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.net.Uri
 import android.os.Bundle
 import android.telecom.PhoneAccountHandle
@@ -86,7 +87,8 @@ class CallHandler(
     fun hangUp(reqId: String?) {
         try {
             val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS)
                 == PackageManager.PERMISSION_GRANTED
             ) {
                 telecomManager.endCall()
