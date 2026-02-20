@@ -51,6 +51,7 @@ android {
     testOptions {
         unitTests.all {
             it.useJUnitPlatform()
+            it.jvmArgs("-Dnet.bytebuddy.experimental=true")
         }
     }
 }
@@ -95,10 +96,10 @@ dependencies {
     implementation(libs.googleid)
 
     // Unit testing — JUnit 5 + MockK
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
-    testImplementation("io.mockk:mockk:1.13.9")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.11.4")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testImplementation("io.mockk:mockk:1.13.16")
 
     // Biometric
     implementation("androidx.biometric:biometric:1.1.0")

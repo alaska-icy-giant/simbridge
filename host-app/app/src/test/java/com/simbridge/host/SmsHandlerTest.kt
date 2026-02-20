@@ -2,6 +2,7 @@ package com.simbridge.host
 
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.telephony.SmsManager
 import android.telephony.SubscriptionInfo
 import com.simbridge.host.data.WsMessage
@@ -29,6 +30,9 @@ class SmsHandlerTest {
         every { android.util.Log.w(any(), any<String>()) } returns 0
         every { android.util.Log.e(any(), any(), any()) } returns 0
         every { android.util.Log.e(any(), any()) } returns 0
+
+        mockkConstructor(Intent::class)
+        every { anyConstructed<Intent>().putExtra(any<String>(), any<String>()) } returns mockk(relaxed = true)
 
         mockkStatic(PendingIntent::class)
         every {
@@ -92,14 +96,21 @@ class SmsHandlerTest {
     }
 
     @Test
-    fun `test sendSms falls back to default when SIM slot not found`() {
+    fun `test sendSms returns error when SIM slot not found`() {
         every { simInfoProvider.getSubscriptionForSlot(99) } returns null
-        every { smsManager.divideMessage("Test") } returns arrayListOf("Test")
 
         smsHandler.sendSms("+15551111111", "Test", 99, "req-3")
 
-        verify(exactly = 1) {
-            smsManager.sendTextMessage("+15551111111", null, "Test", any(), null)
+        // H-10: Should return error instead of falling back to default SIM
+        assertEquals(1, sentEvents.size)
+        assertEquals("SMS_SENT", sentEvents[0].event)
+        assertEquals("error", sentEvents[0].status)
+        assertEquals("SIM slot 99 not available", sentEvents[0].body)
+        assertEquals("req-3", sentEvents[0].reqId)
+
+        // Should NOT have called SmsManager at all
+        verify(exactly = 0) {
+            smsManager.sendTextMessage(any(), any(), any(), any(), any())
         }
     }
 
