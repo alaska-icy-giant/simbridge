@@ -56,12 +56,6 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | xcbeautify || true
 
-      - name: Upload simulator app
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-host-app-simulator
-          path: ios-host-app/DerivedData/Build/Products/Debug-iphonesimulator/*.app
-
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -107,12 +101,6 @@ jobs:
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | xcbeautify || true
-
-      - name: Upload simulator app
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-client-app-simulator
-          path: ios-client-app/DerivedData/Build/Products/Debug-iphonesimulator/*.app
 
       - name: Upload test results
         if: always()

@@ -29,7 +29,7 @@ struct BiometricPromptView: View {
 
             Text("Waiting for biometric authentication\u{2026}")
                 .font(.body)
-                .foregroundColor(colors.onSurfaceVariant)
+                .foregroundColor(colors.onSurface.opacity(0.6))
 
             if let errorMessage = errorMessage {
                 Text(errorMessage)
