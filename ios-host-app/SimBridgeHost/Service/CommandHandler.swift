@@ -78,8 +78,8 @@ final class CommandHandler {
         sendEvent(WsMessage(
             type: "event",
             event: "ERROR",
-            status: "error",
             body: errorMsg,
+            status: "error",
             reqId: reqId
         ))
     }

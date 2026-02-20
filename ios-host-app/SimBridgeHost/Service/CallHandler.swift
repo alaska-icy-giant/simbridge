@@ -43,8 +43,8 @@ final class CallHandler {
                 self.sendEvent(WsMessage(
                     type: "event",
                     event: "CALL_STATE",
-                    state: "error",
                     body: error.localizedDescription,
+                    state: "error",
                     reqId: reqId
                 ))
             } else {
@@ -67,8 +67,8 @@ final class CallHandler {
             sendEvent(WsMessage(
                 type: "event",
                 event: "CALL_STATE",
-                state: "error",
                 body: "No active call",
+                state: "error",
                 reqId: reqId
             ))
             return

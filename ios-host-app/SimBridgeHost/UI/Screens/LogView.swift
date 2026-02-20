@@ -13,7 +13,7 @@ struct LogView: View {
 
     @Environment(\.simBridgeColors) private var colors
 
-    private static let timeFormatter: DateFormatter = {
+    fileprivate static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
         return formatter

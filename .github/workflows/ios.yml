@@ -30,37 +30,25 @@ jobs:
       - name: Cache SPM packages
         uses: actions/cache@v4
         with:
-          path: |
-            ios-host-app/.build
-            ~/Library/Caches/org.swift.swiftpm
+          path: ~/Library/Caches/org.swift.swiftpm
           key: spm-host-${{ runner.os }}-${{ hashFiles('ios-host-app/Package.swift') }}
           restore-keys: spm-host-${{ runner.os }}-
-
-      - name: Resolve packages
-        working-directory: ios-host-app
-        run: swift package resolve
-
-      - name: Build
-        working-directory: ios-host-app
-        run: |
-          swift build \
-            -Xswiftc -sdk -Xswiftc "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
-            -Xswiftc -target -Xswiftc "arm64-apple-ios16.0-simulator" \
-            2>&1 || echo "::warning::Swift build had warnings or errors (expected for UIKit/CallKit dependencies without full Xcode project)"
 
       - name: Build for simulator
         working-directory: ios-host-app
         run: |
+          set -o pipefail
           xcodebuild build \
             -scheme SimBridgeHost \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | xcbeautify || true
+            2>&1 | xcbeautify
 
       - name: Run unit tests
         working-directory: ios-host-app
         run: |
+          set -o pipefail
           xcodebuild test \
             -scheme SimBridgeHost \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
@@ -94,25 +82,25 @@ jobs:
       - name: Cache SPM packages
         uses: actions/cache@v4
         with:
-          path: |
-            ios-client-app/.build
-            ~/Library/Caches/org.swift.swiftpm
+          path: ~/Library/Caches/org.swift.swiftpm
           key: spm-client-${{ runner.os }}-${{ hashFiles('ios-client-app/Package.swift') }}
           restore-keys: spm-client-${{ runner.os }}-
 
       - name: Build for simulator
         working-directory: ios-client-app
         run: |
+          set -o pipefail
           xcodebuild build \
             -scheme SimBridgeClient \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | xcbeautify || true
+            2>&1 | xcbeautify
 
       - name: Run unit tests
         working-directory: ios-client-app
         run: |
+          set -o pipefail
           xcodebuild test \
             -scheme SimBridgeClient \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
