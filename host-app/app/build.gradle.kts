@@ -46,6 +46,13 @@ android {
         // AGP lint crashes on Java 25; disable fatal lint for release builds
         checkReleaseBuilds = false
     }
+
+    @Suppress("UnstableApiUsage")
+    testOptions {
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
+    }
 }
 
 dependencies {
@@ -64,6 +71,8 @@ dependencies {
     androidTestImplementation(composeBomTest)
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.navigation.testing)
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 
     // AndroidX
     implementation(libs.activity.compose)
@@ -84,6 +93,12 @@ dependencies {
     implementation(libs.credentials)
     implementation(libs.credentials.play.services.auth)
     implementation(libs.googleid)
+
+    // Unit testing — JUnit 5 + MockK
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
+    testImplementation("io.mockk:mockk:1.13.9")
 
     // Biometric
     implementation("androidx.biometric:biometric:1.1.0")
