@@ -75,6 +75,18 @@ jobs:
           name: host-app-debug-apk
           path: host-app/app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Upload to Firebase App Distribution
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_HOST_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          file: host-app/app/build/outputs/apk/debug/app-debug.apk
+          releaseNotes: |
+            Host App — ${{ github.sha }}
+            ${{ github.event.head_commit.message }}
+
   client-app:
     name: Client App
     runs-on: ubuntu-latest
@@ -132,6 +144,18 @@ jobs:
         with:
           name: client-app-debug-apk
           path: client-app/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload to Firebase App Distribution
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_CLIENT_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          file: client-app/app/build/outputs/apk/debug/app-debug.apk
+          releaseNotes: |
+            Client App — ${{ github.sha }}
+            ${{ github.event.head_commit.message }}
 
   android-instrumented:
     name: Instrumented Tests
