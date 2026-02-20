@@ -44,8 +44,8 @@ final class SmsHandler: NSObject {
             sendEvent(WsMessage(
                 type: "event",
                 event: "SMS_SENT",
-                status: "error",
                 body: "Device cannot send SMS (no SMS capability or simulator)",
+                status: "error",
                 reqId: reqId
             ))
             return
@@ -59,8 +59,8 @@ final class SmsHandler: NSObject {
             sendEvent(WsMessage(
                 type: "event",
                 event: "SMS_SENT",
-                status: "pending",
                 body: "SMS compose sheet presented. Awaiting user confirmation.",
+                status: "pending",
                 reqId: reqId
             ))
         } else {
@@ -71,8 +71,8 @@ final class SmsHandler: NSObject {
             sendEvent(WsMessage(
                 type: "event",
                 event: "SMS_SENT",
-                status: "error",
                 body: "iOS limitation: Cannot send SMS without user interaction. Present the app to send.",
+                status: "error",
                 reqId: reqId
             ))
         }
@@ -94,8 +94,8 @@ final class SmsHandler: NSObject {
             sendEvent(WsMessage(
                 type: "event",
                 event: "SMS_SENT",
-                status: "cancelled",
                 body: "User cancelled SMS",
+                status: "cancelled",
                 reqId: reqId
             ))
         case .failed:
@@ -103,8 +103,8 @@ final class SmsHandler: NSObject {
             sendEvent(WsMessage(
                 type: "event",
                 event: "SMS_SENT",
-                status: "error",
                 body: "SMS send failed",
+                status: "error",
                 reqId: reqId
             ))
         @unknown default:

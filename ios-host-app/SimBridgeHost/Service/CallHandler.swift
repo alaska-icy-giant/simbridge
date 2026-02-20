@@ -52,8 +52,8 @@ final class CallHandler {
                 self.sendEvent(WsMessage(
                     type: "event",
                     event: "CALL_STATE",
-                    state: "dialing",
                     sim: simSlot,
+                    state: "dialing",
                     reqId: reqId
                 ))
             }

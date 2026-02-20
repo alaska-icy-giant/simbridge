@@ -9,7 +9,7 @@ enum Prefs {
 
     // MARK: - Keys
 
-    private enum Key: String {
+    fileprivate enum Key: String {
         case serverUrl
         case token
         case deviceId
